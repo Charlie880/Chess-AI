@@ -1,0 +1,275 @@
+﻿:root{
+  /* Dark, low-chroma slate. The board is deliberately quiet: uploaded art is
+     the only saturated thing on screen. */
+  --bg:#101215;
+  --panel:#181b1f;
+  --light:#464c54;   /* "light" square â€” still dark, just the lighter of the pair */
+  --dark:#272c32;
+  --accent:#9bb0c4;
+  --danger:#c96a6a;
+  --ink:#e3e6ea;
+  --muted:#8a929b;
+  --edge:#0b0d0f;    /* borders, outlines, text strokes */
+  --field:#1f2328;   /* inputs, trays */
+  --line:#2f353c;
+  --display:'Anton', 'Arial Black', system-ui, sans-serif;
+  --slide:300ms;   /* JS reads this, keep the two in sync via SLIDE_MS */
+  /* Fallback for browsers without container queries; the real desktop sizing
+     lives in the min-width:901px block below. */
+  --board:min(calc(100vh - 52px), 100%);
+}
+
+*{box-sizing:border-box}
+/* .overlay/.modal/.controls label set display, which would otherwise beat [hidden] */
+[hidden]{display:none !important}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font:15px/1.45 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  min-height:100vh;
+}
+
+.topbar{
+  display:flex; flex-wrap:wrap; gap:16px; align-items:center; justify-content:space-between;
+  padding:5px 22px;
+  background:linear-gradient(180deg,var(--panel),var(--bg));
+  border-bottom:3px solid var(--edge);
+}
+.topbar h1{
+  font-family:var(--display);
+  font-size:23px; letter-spacing:1.5px; margin:0;
+  color:var(--accent);
+  text-shadow:2px 2px 0 var(--edge);
+}
+.controls{display:flex; gap:14px; align-items:center; flex-wrap:wrap}
+.controls label{display:flex; gap:6px; align-items:center; font-size:13px; color:var(--muted)}
+select, .btn, input[type=file]{
+  font:inherit; font-size:13px;
+  background:var(--field); color:var(--ink);
+  border:1px solid var(--line); border-radius:8px; padding:6px 10px;
+}
+.btn{cursor:pointer; background:var(--accent); color:var(--field); font-weight:700; border-color:var(--line)}
+.btn:hover{filter:brightness(1.08)}
+.btn.small{padding:2px 8px; font-size:12px}
+
+main{
+  display:grid; grid-template-columns:minmax(320px, 1fr) 340px;
+  gap:24px; padding:4px 22px 0; align-items:start;
+}
+@media (max-width:900px){ main{grid-template-columns:1fr} }
+
+/* Desktop: the page is exactly one viewport, `main` takes whatever the header
+   leaves, and the board measures that leftover directly (100cqh) instead of
+   guessing a header height — a wrapped header can't clip it any more. */
+@media (min-width:901px){
+  body{height:100vh; overflow:hidden; display:flex; flex-direction:column}
+  main{flex:1 1 auto; min-height:0; align-items:stretch; padding-bottom:8px}
+  .board-area{min-height:0; container-type:size; justify-content:center}
+  .board{width:min(100%, 100cqh)}
+  .side{min-height:0; overflow-y:auto}
+}
+
+/* ---------- board ---------- */
+.board-area{display:flex; flex-direction:column; gap:4px; align-items:center}
+.board{
+  width:var(--board);
+  aspect-ratio:1;
+  display:grid;
+  grid-template-columns:repeat(8,1fr);
+  grid-template-rows:repeat(8,1fr);
+  border:8px solid var(--edge);
+  border-radius:10px;
+  box-shadow:0 14px 40px rgba(0,0,0,.5);
+  overflow:hidden;
+}
+.sq{
+  position:relative;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  cursor:default; user-select:none;
+  min-width:0; min-height:0; overflow:hidden; /* captions must not widen the grid track */
+}
+.sq.light{background:var(--light)}
+.sq.dark{background:var(--dark)}
+/* hairline between squares so pale art still reads as sitting on a grid */
+.sq.light, .sq.dark{box-shadow:inset 0 0 0 1px rgba(0,0,0,.35)}
+.sq.pickable{cursor:pointer}
+.sq.last{box-shadow:inset 0 0 0 100px rgba(155,176,196,.16)}
+.sq.sel{box-shadow:inset 0 0 0 4px var(--accent)}
+.sq.check{box-shadow:inset 0 0 0 100px rgba(201,106,106,.4), inset 0 0 0 4px var(--danger)}
+
+.coord{
+  position:absolute; font-size:10px; font-weight:700; opacity:.55; pointer-events:none;
+}
+.sq.light .coord{color:rgba(255,255,255,.55)}
+.sq.dark .coord{color:var(--ink)}
+.coord.file{right:3px; bottom:2px}
+.coord.rank{left:3px; top:2px}
+
+.piece{
+  width:88%; height:88%; min-width:0; max-width:100%;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  pointer-events:none;
+}
+.piece .art{
+  /* photo-backed art gets cropped to a coin: the subject is centred, most of the
+     background falls outside the circle. object-position rides high because faces
+     sit above centre in almost every meme crop. */
+  width:100%; height:100%; object-fit:cover; object-position:50% 30%; display:block;
+  border-radius:50%;
+  /* uploaded art can be any brightness â€” a ring plus a drop shadow keeps a
+     pale GIF from melting into a light square, and the ring colour says
+     which side owns the piece */
+  background:rgba(0,0,0,.14);
+  box-shadow:0 0 0 1px var(--edge), 0 0 0 3px rgba(227,230,234,.75), 0 2px 8px rgba(0,0,0,.55);
+}
+.piece.b .art{box-shadow:0 0 0 1px rgba(227,230,234,.4), 0 0 0 3px var(--edge), 0 2px 8px rgba(0,0,0,.55)}
+.piece .glyph{font-size:min(6vh,54px); line-height:1}
+.piece .cap{
+  font-family:var(--display);
+  max-width:100%;
+  font-size:min(1.7vh,14px); letter-spacing:.3px; line-height:1.05; text-align:center;
+  text-transform:uppercase;
+  color:#fff;
+  -webkit-text-stroke:2.5px var(--edge);
+  paint-order:stroke fill;
+}
+.piece.b .cap{color:#b9c4cf}
+
+/* piece name on hover, on selection, and on tap (`.named`, set by the click
+   handler so touch screens get it too) */
+.piece .label{
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  font:700 clamp(9px,1.1vh,12px)/1 ui-sans-serif, system-ui, sans-serif;
+  letter-spacing:.5px; text-transform:uppercase; white-space:nowrap;
+  padding:3px 7px; border-radius:999px;
+  background:rgba(11,13,15,.88); color:var(--ink); border:1px solid var(--line);
+  opacity:0; transition:opacity .12s ease; pointer-events:none;
+}
+.sq:hover .label, .sq.sel .label, .sq.named .label{opacity:1}
+
+/* move dots */
+.dot{
+  position:absolute; width:26%; height:26%; border-radius:50%;
+  background:rgba(227,230,234,.30); pointer-events:none;
+}
+.sq.light .dot{background:rgba(227,230,234,.38)}
+.ring{
+  position:absolute; inset:6%; border-radius:8px;
+  border:5px solid rgba(201,106,106,.75); pointer-events:none;
+}
+
+/* hanging pulse */
+.sq.hang::after{
+  content:''; position:absolute; inset:4%;
+  border-radius:8px;
+  border:3px solid var(--danger);
+  animation:pulse 1.5s ease-in-out infinite;
+  pointer-events:none;
+}
+@keyframes pulse{
+  0%,100%{opacity:.18; transform:scale(.94)}
+  50%{opacity:.85; transform:scale(1)}
+}
+
+/* capture exit-beat */
+.ghost{
+  position:fixed; z-index:60; pointer-events:none;
+  transition:transform .6s cubic-bezier(.4,-0.2,.5,1.3), opacity .6s ease-in;
+  display:flex; align-items:center; justify-content:center;
+}
+/* the moving piece slides to its destination before any reaction fires */
+.ghost.slide{transition:transform var(--slide) cubic-bezier(.22,.61,.36,1)}
+
+/* ---------- trays ---------- */
+.tray{
+  width:100%;
+  display:flex; align-items:center; gap:10px;
+  min-height:28px;
+  background:var(--field); border:1px solid var(--line); border-radius:10px; padding:3px 10px;
+}
+.tray-label{font-family:var(--display); font-size:11px; letter-spacing:1px; color:var(--muted); text-transform:uppercase; white-space:nowrap}
+.tray-items{display:flex; flex-wrap:wrap; gap:2px; align-items:center}
+.tray-items .piece{width:24px; height:24px}
+.tray-items .piece .glyph{font-size:17px}
+.tray-items .piece .cap{display:none}
+.tray-items .piece .art{box-shadow:0 0 0 2px var(--edge)} /* full ring is too heavy at 24px */
+
+/* ---------- sidebar ---------- */
+.side{display:flex; flex-direction:column; gap:12px}
+.status{
+  font-family:var(--display); font-size:20px; letter-spacing:.6px;
+  background:var(--panel); border:1px solid var(--line); border-left:6px solid var(--accent);
+  border-radius:10px; padding:12px 14px;
+}
+.status.check{border-left-color:var(--danger); color:var(--danger)}
+.status.over{border-left-color:#7f9e83}
+
+.panel{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px}
+.panel>summary{
+  font-family:var(--display); font-size:14px; letter-spacing:.8px; text-transform:uppercase;
+  cursor:pointer; color:var(--accent);
+}
+.hint{font-size:12px; color:var(--muted); margin:8px 0}
+
+.log{
+  margin:10px 0 0; padding:0 0 0 26px;
+  max-height:260px; overflow-y:auto; font-size:13px;
+}
+.log li{margin-bottom:3px}
+.log .san{color:var(--muted); font-family:ui-monospace, Consolas, monospace; font-size:11px; margin-left:6px}
+
+.slots{display:flex; flex-direction:column; gap:8px; margin-top:8px}
+.slot{
+  display:grid; grid-template-columns:44px 1fr; gap:8px; align-items:center;
+  background:var(--field); border:1px solid var(--line); border-radius:8px; padding:6px 8px;
+}
+.slot .thumb{
+  width:44px; height:44px; border-radius:6px; overflow:hidden;
+  display:flex; align-items:center; justify-content:center;
+  background:var(--edge); font-size:22px;
+}
+.slot .thumb img{width:100%; height:100%; object-fit:cover}
+.slot .name{font-family:var(--display); font-size:12px; letter-spacing:.6px; text-transform:uppercase}
+.slot .row{display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:3px}
+.slot input[type=file]{max-width:150px; padding:3px 5px; font-size:11px}
+.slot .tag{font-size:10px; color:var(--muted); width:34px}
+
+/* ---------- overlays ---------- */
+.overlay{
+  position:fixed; inset:0; z-index:50;
+  display:flex; align-items:center; justify-content:center;
+  background:rgba(0,0,0,.55);
+  animation:pop .18s ease-out;
+}
+.overlay img{
+  max-width:min(60vw,520px); max-height:60vh;
+  border:2px solid var(--line); border-radius:12px;
+  box-shadow:0 20px 60px rgba(0,0,0,.7);
+}
+.overlay .caption{
+  position:absolute; bottom:12%;
+  font-family:var(--display); font-size:44px; letter-spacing:2px; text-transform:uppercase;
+  color:#fff; -webkit-text-stroke:5px var(--edge); paint-order:stroke fill;
+}
+@keyframes pop{from{opacity:0; transform:scale(.9)} to{opacity:1; transform:none}}
+
+.modal{
+  position:fixed; inset:0; z-index:70;
+  display:flex; align-items:center; justify-content:center;
+  background:rgba(0,0,0,.75);
+}
+.modal-box{
+  background:var(--panel); border:1px solid var(--line); border-radius:14px;
+  padding:18px 22px; text-align:center;
+}
+.modal-box h2{font-family:var(--display); letter-spacing:1px; margin:0 0 12px; color:var(--accent)}
+.promo-choices{display:flex; gap:10px}
+.promo-choices button{
+  width:84px; height:84px; cursor:pointer;
+  background:var(--field); border:1px solid var(--line); border-radius:10px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+}
+.promo-choices button:hover{border-color:var(--accent); transform:translateY(-2px)}
+.promo-choices .piece{width:100%; height:100%}
+.promo-choices .piece .cap{color:var(--ink); -webkit-text-stroke:0}

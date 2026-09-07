@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cat Meme Chess</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <h1>Cat Meme Chess</h1>
+  <div class="controls">
+    <label>Mode
+      <select id="mode">
+        <option value="hotseat">2 players (hotseat)</option>
+        <option value="ai">Vs computer</option>
+      </select>
+    </label>
+    <label id="difficulty-wrap" hidden>Difficulty
+      <select id="difficulty">
+        <option value="2">Easy (2 ply)</option>
+        <option value="3">Hard (3 ply)</option>
+      </select>
+    </label>
+    <button id="newgame" class="btn">New game</button>
+  </div>
+</header>
+
+<main>
+  <section class="board-area">
+    <div id="board" class="board" aria-label="chess board"></div>
+  </section>
+
+  <aside class="side">
+    <div id="status" class="status">White to move</div>
+    <div class="tray" id="tray-b-wrap"><span class="tray-label">Sidelined black</span><div class="tray-items" id="tray-b"></div></div>
+    <div class="tray" id="tray-w-wrap"><span class="tray-label">Sidelined white</span><div class="tray-items" id="tray-w"></div></div>
+
+    <details class="panel" open>
+      <summary>Move log</summary>
+      <ol id="log" class="log"></ol>
+    </details>
+
+    <details class="panel">
+      <summary>Piece art (12 slots)</summary>
+      <p class="hint">Drop in your own GIFs / images. Nothing leaves your browser; uploads reset on reload.</p>
+      <div id="piece-slots" class="slots"></div>
+    </details>
+
+    <details class="panel">
+      <summary>Reaction GIFs + sounds</summary>
+      <p class="hint">Each moment can have a GIF and an audio clip. Empty slots fall back to a synth blip.</p>
+      <div id="reaction-slots" class="slots"></div>
+    </details>
+  </aside>
+</main>
+
+<div id="overlay" class="overlay" hidden></div>
+
+<div id="promo" class="modal" hidden>
+  <div class="modal-box">
+    <h2>Small Bean levels up!</h2>
+    <div id="promo-choices" class="promo-choices"></div>
+  </div>
+</div>
+
+<script src="chess-engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

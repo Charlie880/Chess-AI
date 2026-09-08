@@ -1,18 +1,30 @@
 """Chess engine API. One endpoint, three pluggable engines behind a difficulty flag."""
 
 import logging
+from contextlib import asynccontextmanager
 
 import chess
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+import db
+import routes_auth
+import routes_games
+from config import PERSISTENCE_ENABLED
 from engines import cnn_engine, minmax_engine, stockfish_engine
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("chess-api")
 
-app = FastAPI(title="Chess Engine API")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    await db.connect()
+    yield
+    await db.close()
+
+
+app = FastAPI(title="Chess Engine API", lifespan=lifespan)
 
 # The Next.js route handler proxies server-side and doesn't need this, but it
 # lets the API be hit directly from a browser during development.
@@ -35,9 +47,13 @@ class MoveRequest(BaseModel):
     difficulty: str = "normal"
 
 
+app.include_router(routes_auth.router)
+app.include_router(routes_games.router)
+
+
 @app.get("/health")
 def health():
-    return {"status": "ok", "engines": sorted(ENGINES)}
+    return {"status": "ok", "engines": sorted(ENGINES), "persistence": PERSISTENCE_ENABLED}
 
 
 @app.post("/move")

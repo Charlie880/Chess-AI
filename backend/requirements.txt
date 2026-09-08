@@ -6,3 +6,9 @@ requests>=2.31
 numpy>=1.26
 # Easy mode only. Normal and Hard run without it.
 tensorflow>=2.16
+
+# Accounts + game history
+pymongo>=4.9
+dnspython>=2.6
+bcrypt>=4.1
+PyJWT>=2.8

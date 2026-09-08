@@ -4,13 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Chess, type Move } from "chess.js"
 
 import AuthPanel, { type User } from "@/components/AuthPanel"
-import CapturedPieces from "@/components/CapturedPieces"
 import ChessBoard from "@/components/ChessBoard"
+import EngineSelector from "@/components/EngineSelector"
 import GameHistory from "@/components/GameHistory"
-import ModeSelector, { type Difficulty } from "@/components/ModeSelector"
-import MoveLog from "@/components/MoveLog"
+import PlayerRail from "@/components/PlayerRail"
 import PromotionDialog from "@/components/PromotionDialog"
+import Scoresheet from "@/components/Scoresheet"
 import { materialBalance, type PieceColor } from "@/lib/chess-ui"
+import { ENGINES, type Difficulty } from "@/lib/engines"
+import { cn } from "@/lib/utils"
 
 type Captured = { w: string[]; b: string[] }
 
@@ -23,7 +25,7 @@ type GameState = {
 }
 
 /** Single source of truth for "how did this game end", shared by the status
- * line, the move log footer, and what gets written to history. */
+ * line, the scoresheet footer, and what gets written to history. */
 function describeGame(game: Chess, playerColor: PieceColor): GameState {
   const turn = game.turn()
   const side = turn === "w" ? "White" : "Black"
@@ -35,14 +37,20 @@ function describeGame(game: Chess, playerColor: PieceColor): GameState {
       outcome: winner === playerColor ? "win" : "loss",
       result: winner === "w" ? "1-0" : "0-1",
       termination: "checkmate",
-      label: `Checkmate - ${winner === "w" ? "White" : "Black"} wins`,
+      label: winner === playerColor ? "Checkmate. You win." : "Checkmate. You lose.",
     }
   }
   if (game.isStalemate()) {
-    return { status: "finished", outcome: "draw", result: "1/2-1/2", termination: "stalemate", label: "Stalemate" }
+    return {
+      status: "finished",
+      outcome: "draw",
+      result: "1/2-1/2",
+      termination: "stalemate",
+      label: "Stalemate. Nobody wins.",
+    }
   }
   if (game.isDraw()) {
-    return { status: "finished", outcome: "draw", result: "1/2-1/2", termination: "draw", label: "Draw" }
+    return { status: "finished", outcome: "draw", result: "1/2-1/2", termination: "draw", label: "Drawn." }
   }
   return {
     status: "in_progress",
@@ -63,6 +71,7 @@ export default function ChessGame() {
 
   const [difficulty, setDifficulty] = useState<Difficulty>("normal")
   const [playerColor, setPlayerColor] = useState<PieceColor>("w")
+  const [nextColor, setNextColor] = useState<PieceColor>("w")
   const [orientation, setOrientation] = useState<PieceColor>("w")
   const [selected, setSelected] = useState<string | null>(null)
   const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null)
@@ -141,7 +150,7 @@ export default function ChessGame() {
         body: JSON.stringify({ fen: game.current.fen(), difficulty }),
       })
       const data = await response.json()
-      if (!response.ok) throw new Error(data.error ?? "Engine request failed")
+      if (!response.ok) throw new Error(data.error ?? "The engine did not answer.")
 
       // Always move by from/to: a UCI string is not SAN, and chess.js rejects it.
       const move = game.current.move({
@@ -154,7 +163,7 @@ export default function ChessGame() {
       bump()
       void syncGame()
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Engine unavailable")
+      setError(err instanceof Error ? err.message : "The engine did not answer.")
     } finally {
       setThinking(false)
     }
@@ -197,7 +206,8 @@ export default function ChessGame() {
     setSelected(piece && piece.color === playerColor ? square : null)
   }
 
-  const newGame = async (color: PieceColor) => {
+  const newGame = async () => {
+    const color = nextColor
     game.current = new Chess()
     gameId.current = null
     setPlayerColor(color)
@@ -252,29 +262,42 @@ export default function ChessGame() {
 
   const { advantage, leader } = materialBalance(captured)
   const opponentColor: PieceColor = playerColor === "w" ? "b" : "w"
+  const engine = ENGINES[difficulty]
 
-  const statusLabel = resigned ? "You resigned" : state.label
+  const statusLabel = resigned ? "You resigned." : state.label
   const resultLabel = resigned ? (playerColor === "w" ? "0-1" : "1-0") : state.result
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "f") setOrientation((o) => (o === "w" ? "b" : "w"))
+      const typing = (e.target as HTMLElement | null)?.tagName === "INPUT"
+      if (!typing && e.key === "f") setOrientation((o) => (o === "w" ? "b" : "w"))
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [])
 
+  const quietButton =
+    "border border-rule px-3 py-2 text-[15px] text-graphite transition-colors hover:border-graphite hover:text-chalk disabled:opacity-40 disabled:hover:border-rule disabled:hover:text-graphite"
+
   return (
-    <main className="min-h-screen bg-neutral-950 p-4 text-neutral-100">
-      <div className="mx-auto flex max-w-6xl flex-col gap-6 lg:flex-row lg:items-start lg:justify-center">
-        <section className="flex flex-col items-center gap-2">
-          <CapturedPieces
-            label={opponentColor === "w" ? "White" : "Black"}
-            captured={captured[playerColor]}
-            color={playerColor}
-            advantage={leader === opponentColor ? advantage : 0}
-            thinking={thinking}
-          />
+    <div className="min-h-screen">
+      <header className="border-b border-brass/20 px-5 py-2">
+        <span className="wide text-[15px] font-semibold tracking-tight">Chess AI</span>
+      </header>
+
+      <main className="mx-auto flex max-w-6xl flex-col items-center gap-6 px-4 py-4 lg:flex-row lg:items-start lg:justify-center">
+        <section className="flex w-full flex-col items-center lg:w-auto">
+          <div style={{ width: "min(92vw, calc(100vh - 13rem))", maxWidth: "100%" }}>
+            <PlayerRail
+              name={engine.opponent}
+              color={opponentColor}
+              detail={engine.detail}
+              captured={captured[playerColor]}
+              capturedColor={playerColor}
+              advantage={leader === opponentColor ? advantage : 0}
+              thinking={thinking}
+            />
+          </div>
 
           <ChessBoard
             board={board}
@@ -287,18 +310,82 @@ export default function ChessGame() {
             onSquareClick={handleSquareClick}
           />
 
-          <CapturedPieces
-            label={playerColor === "w" ? "White" : "Black"}
-            captured={captured[opponentColor]}
-            color={opponentColor}
-            advantage={leader === playerColor ? advantage : 0}
-          />
+          <div style={{ width: "min(92vw, calc(100vh - 13rem))", maxWidth: "100%" }}>
+            <PlayerRail
+              name={user ? user.username : "You"}
+              color={playerColor}
+              detail={playerColor === "w" ? "playing white" : "playing black"}
+              captured={captured[opponentColor]}
+              capturedColor={opponentColor}
+              advantage={leader === playerColor ? advantage : 0}
+            />
+          </div>
         </section>
 
-        <aside className="flex w-full flex-col gap-3 lg:w-80">
-          <div className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-3">
-            <p className="text-lg font-semibold">{statusLabel}</p>
-            {error && <p className="mt-1 text-sm text-red-400">{error}</p>}
+        {/* One panel divided by hairlines, not a stack of identical cards. */}
+        <aside className="w-full divide-y divide-rule border border-rule bg-slate lg:w-[21rem]">
+          <div className="px-4 py-4">
+            <p className={cn("wide text-2xl font-semibold leading-tight tracking-tight", finished && "text-brass")}>
+              {statusLabel}
+            </p>
+            {error && <p className="mt-1.5 text-sm text-alarm">{error}</p>}
+          </div>
+
+          <Scoresheet moves={history} result={resultLabel} />
+
+          <EngineSelector
+            difficulty={difficulty}
+            onDifficultyChange={setDifficulty}
+            disabled={thinking}
+          />
+
+          <div className="flex flex-col gap-2 px-4 py-3">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-graphite">Play as</span>
+              {(["w", "b"] as const).map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => setNextColor(color)}
+                  aria-pressed={nextColor === color}
+                  className={cn(
+                    "border px-2.5 py-1 text-sm transition-colors",
+                    nextColor === color
+                      ? "border-brass text-chalk"
+                      : "border-rule text-graphite hover:text-chalk",
+                  )}
+                >
+                  {color === "w" ? "White" : "Black"}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void newGame()}
+              disabled={thinking}
+              className="bg-brass px-3 py-2 text-[15px] font-semibold text-ink transition-colors hover:bg-[#D9A64C] disabled:opacity-40"
+            >
+              New game
+            </button>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={resign}
+                disabled={finished || history.length === 0}
+                className={quietButton}
+              >
+                Resign
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrientation((o) => (o === "w" ? "b" : "w"))}
+                className={quietButton}
+              >
+                Flip board
+              </button>
+            </div>
           </div>
 
           <AuthPanel
@@ -313,47 +400,9 @@ export default function ChessGame() {
             }}
           />
 
-          <ModeSelector difficulty={difficulty} onDifficultyChange={setDifficulty} disabled={thinking} />
-
-          <MoveLog moves={history} result={resultLabel} />
-
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => void newGame("w")}
-              disabled={thinking}
-              className="rounded border border-neutral-700 bg-neutral-100 px-3 py-2 text-sm font-semibold text-neutral-900 hover:bg-white disabled:opacity-40"
-            >
-              New game (white)
-            </button>
-            <button
-              type="button"
-              onClick={() => void newGame("b")}
-              disabled={thinking}
-              className="rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700 disabled:opacity-40"
-            >
-              New game (black)
-            </button>
-            <button
-              type="button"
-              onClick={resign}
-              disabled={finished || history.length === 0}
-              className="rounded border border-neutral-700 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-800 disabled:opacity-40"
-            >
-              Resign
-            </button>
-            <button
-              type="button"
-              onClick={() => setOrientation((o) => (o === "w" ? "b" : "w"))}
-              className="rounded border border-neutral-700 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-800"
-            >
-              Flip <span className="text-neutral-500">(f)</span>
-            </button>
-          </div>
-
           {user && <GameHistory refreshKey={historyKey} />}
         </aside>
-      </div>
+      </main>
 
       {pendingPromotion && (
         <PromotionDialog
@@ -366,6 +415,6 @@ export default function ChessGame() {
           onCancel={() => setPendingPromotion(null)}
         />
       )}
-    </main>
+    </div>
   )
 }

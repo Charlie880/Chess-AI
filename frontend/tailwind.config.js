@@ -1,78 +1,43 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  darkMode: ["class"],
-  content: [
-    "./pages/**/*.{ts,tsx}",
-    "./components/**/*.{ts,tsx}",
-    "./app/**/*.{ts,tsx}",
-    "./src/**/*.{ts,tsx}",
-    "*.{js,ts,jsx,tsx,mdx}",
-  ],
-  prefix: "",
+  content: ["./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./lib/**/*.{ts,tsx}"],
   theme: {
-    container: {
-      center: true,
-      padding: "2rem",
-      screens: {
-        "2xl": "1400px",
-      },
-    },
     extend: {
       colors: {
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
-        primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
-        },
-        secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
-        },
-        destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
-        },
-        muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
-        },
-        accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
-        },
-        popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
-        },
-        card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
-        },
+        // A dark hall, a wooden board, brass fittings. The board is the only
+        // warm object on the page and everything else stays out of its way.
+        ink: "#131A1C", // ground: blue-green black, not a tinted grey
+        slate: "#1B2427", // raised surfaces
+        rule: "#2A3538", // hairlines
+        chalk: "#E8E4D9", // primary text
+        graphite: "#8A9698", // secondary text
+        brass: "#C9963F", // the single accent
+        walnut: "#7A5A3C", // dark squares
+        maple: "#DFC9A3", // light squares
+        frame: "#40301F", // board surround
+        etch: "#4E3823", // coordinates on light squares
+        // Two reds, because the same hue cannot do both jobs: the deep one
+        // is a fill on wood, the light one is text on the dark panel and
+        // needs 4.5:1 against it.
+        brick: "#A83E2E", // check square, on the board
+        alarm: "#DD6A52", // loss and error text, on the panel
+        moss: "#7FA05A", // wins
       },
-      borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+      fontFamily: {
+        sans: ["var(--font-archivo)", "system-ui", "sans-serif"],
       },
       keyframes: {
-        "accordion-down": {
-          from: { height: "0" },
-          to: { height: "var(--radix-accordion-content-height)" },
-        },
-        "accordion-up": {
-          from: { height: "var(--radix-accordion-content-height)" },
-          to: { height: "0" },
+        // The arriving piece settles rather than teleporting. The only motion
+        // on the page, and it answers an action the player just took.
+        settle: {
+          "0%": { transform: "scale(1.18)" },
+          "100%": { transform: "scale(1)" },
         },
       },
       animation: {
-        "accordion-down": "accordion-down 0.2s ease-out",
-        "accordion-up": "accordion-up 0.2s ease-out",
+        settle: "settle 160ms cubic-bezier(.2,.8,.3,1)",
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [],
 }

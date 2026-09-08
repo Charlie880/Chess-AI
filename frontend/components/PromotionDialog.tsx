@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect } from "react"
 import { PIECE_GLYPHS, type PieceColor } from "@/lib/chess-ui"
 
 interface PromotionDialogProps {
@@ -8,35 +9,49 @@ interface PromotionDialogProps {
   onCancel: () => void
 }
 
-const CHOICES: ("q" | "r" | "b" | "n")[] = ["q", "r", "b", "n"]
+const CHOICES: { id: "q" | "r" | "b" | "n"; name: string }[] = [
+  { id: "q", name: "Queen" },
+  { id: "r", name: "Rook" },
+  { id: "b", name: "Bishop" },
+  { id: "n", name: "Knight" },
+]
 
 export default function PromotionDialog({ color, onSelect, onCancel }: PromotionDialogProps) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onCancel()
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onCancel])
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/85 p-4"
       onClick={onCancel}
       role="dialog"
-      aria-label="Choose promotion piece"
+      aria-modal="true"
+      aria-label="Choose a piece to promote to"
     >
-      <div
-        className="rounded-md border border-neutral-700 bg-neutral-900 p-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <p className="mb-3 text-center text-sm text-neutral-400">Promote to</p>
-        <div className="flex gap-2">
-          {CHOICES.map((piece) => (
+      <div className="bg-frame p-2" onClick={(e) => e.stopPropagation()}>
+        <p className="px-2 py-2 text-center text-[15px] text-maple">Your pawn reaches the last rank</p>
+        <div className="flex gap-px bg-frame">
+          {CHOICES.map(({ id, name }, index) => (
             <button
-              key={piece}
+              key={id}
               type="button"
-              onClick={() => onSelect(piece)}
-              className="flex h-16 w-16 items-center justify-center rounded border border-neutral-700 bg-[#eeeed2] text-4xl hover:border-neutral-400"
+              autoFocus={index === 0}
+              onClick={() => onSelect(id)}
+              title={name}
+              aria-label={name}
+              className="flex h-20 w-20 items-center justify-center bg-maple text-5xl hover:bg-[#E7CE8F]"
               style={{
-                color: color === "w" ? "#fff" : "#1b1b1b",
-                textShadow: color === "w" ? "0 0 1px #000, 1px 1px 0 #000, -1px -1px 0 #000" : "none",
+                color: color === "w" ? "#F7F3EA" : "#211F1C",
+                textShadow:
+                  color === "w"
+                    ? "0 0 1px #211F1C, 1px 1px 0 #211F1C, -1px -1px 0 #211F1C, 1px -1px 0 #211F1C, -1px 1px 0 #211F1C"
+                    : "none",
               }}
-              aria-label={piece}
             >
-              {PIECE_GLYPHS[piece]}
+              {PIECE_GLYPHS[id]}
             </button>
           ))}
         </div>

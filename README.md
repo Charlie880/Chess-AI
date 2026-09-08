@@ -135,9 +135,13 @@ POST /move
 
 ```bash
 cd backend && python test_engines.py
+cd frontend && node --experimental-strip-types lib/chess-ui.test.mts
 ```
 
-Covers mate detection, mate avoidance, material capture, and terminal scoring.
+The first covers mate detection, mate avoidance, material capture and terminal
+scoring. The second covers the plain-language move descriptions in the move
+list: quiet moves, captures, both castles, en passant, promotion, and the
+check/checkmate distinction.
 
 ## CNN model status
 

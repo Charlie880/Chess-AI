@@ -10,7 +10,7 @@ import GameHistory from "@/components/GameHistory"
 import PlayerRail from "@/components/PlayerRail"
 import PromotionDialog from "@/components/PromotionDialog"
 import Scoresheet from "@/components/Scoresheet"
-import { materialBalance, type PieceColor } from "@/lib/chess-ui"
+import { materialBalance, type PieceColor, type PlayedMove } from "@/lib/chess-ui"
 import { ENGINES, type Difficulty } from "@/lib/engines"
 import { cn } from "@/lib/utils"
 
@@ -97,6 +97,7 @@ export default function ChessGame() {
   const board = game.current.board()
   const turn = game.current.turn()
   const history = game.current.history()
+  const playedMoves = game.current.history({ verbose: true }) as unknown as PlayedMove[]
   const state = describeGame(game.current, playerColor)
   const finished = resigned || state.status === "finished"
   const isPlayerTurn = turn === playerColor && !thinking && !finished
@@ -323,7 +324,7 @@ export default function ChessGame() {
         </section>
 
         {/* One panel divided by hairlines, not a stack of identical cards. */}
-        <aside className="w-full divide-y divide-rule border border-rule bg-slate lg:w-[21rem]">
+        <aside className="w-full divide-y divide-rule border border-rule bg-slate lg:w-[23rem]">
           <div className="px-4 py-4">
             <p className={cn("wide text-2xl font-semibold leading-tight tracking-tight", finished && "text-brass")}>
               {statusLabel}
@@ -331,7 +332,7 @@ export default function ChessGame() {
             {error && <p className="mt-1.5 text-sm text-alarm">{error}</p>}
           </div>
 
-          <Scoresheet moves={history} result={resultLabel} />
+          <Scoresheet moves={playedMoves} result={resultLabel} />
 
           <EngineSelector
             difficulty={difficulty}

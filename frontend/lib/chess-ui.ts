@@ -35,3 +35,54 @@ export function materialBalance(captured: { w: string[]; b: string[] }) {
   const diff = sum(captured.b) - sum(captured.w)
   return { advantage: Math.abs(diff), leader: diff === 0 ? null : diff > 0 ? "w" : "b" }
 }
+
+export const PIECE_NAMES: Record<string, string> = {
+  k: "King",
+  q: "Queen",
+  r: "Rook",
+  b: "Bishop",
+  n: "Knight",
+  p: "Pawn",
+}
+
+/** The shape chess.js returns from `history({ verbose: true })`. */
+export type PlayedMove = {
+  color: PieceColor
+  from: string
+  to: string
+  piece: string
+  captured?: string
+  promotion?: string
+  flags: string
+  san: string
+}
+
+/** Turn a move into a sentence. Notation is precise but has to be learned;
+ * this says the same thing in words, keeping both squares so it still pins
+ * down exactly which piece moved. */
+export function describeMove(move: PlayedMove): string {
+  // chess.js flags: k/q castling, e en passant, p promotion, c capture.
+  if (move.flags.includes("k")) return withCheck("Castles kingside", move.san)
+  if (move.flags.includes("q")) return withCheck("Castles queenside", move.san)
+
+  const mover = PIECE_NAMES[move.piece]
+
+  if (move.captured) {
+    const victim = PIECE_NAMES[move.captured].toLowerCase()
+    const passing = move.flags.includes("e") ? " en passant" : ""
+    return withCheck(`${mover} ${move.from} takes ${victim} ${move.to}${passing}`, move.san)
+  }
+
+  if (move.promotion) {
+    const promoted = PIECE_NAMES[move.promotion].toLowerCase()
+    return withCheck(`${mover} ${move.from} to ${move.to}, promotes to ${promoted}`, move.san)
+  }
+
+  return withCheck(`${mover} ${move.from} to ${move.to}`, move.san)
+}
+
+function withCheck(sentence: string, san: string): string {
+  if (san.endsWith("#")) return `${sentence}, checkmate`
+  if (san.endsWith("+")) return `${sentence}, check`
+  return sentence
+}

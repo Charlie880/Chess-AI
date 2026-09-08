@@ -23,20 +23,22 @@ export default function ShareLink({ roomId }: { roomId: string }) {
   }
 
   return (
-    <div className="px-4 py-3">
-      <p className="text-sm text-graphite">Send this link to play or to let someone watch.</p>
-      <div className="mt-2 flex gap-2">
+    <div className="mt-8 border-t border-rule pt-5">
+      <p className="text-sm leading-relaxed text-graphite">
+        Anyone with this link can take a seat or watch.
+      </p>
+      <div className="mt-2.5 flex items-center gap-3">
         <input
           readOnly
           value={url}
           aria-label="Link to this room"
           onFocus={(e) => e.currentTarget.select()}
-          className="min-w-0 flex-1 border border-rule bg-ink px-2 py-1.5 text-sm text-chalk"
+          className="figures min-w-0 flex-1 border-none bg-transparent p-0 text-sm text-chalk outline-none"
         />
         <button
           type="button"
           onClick={copy}
-          className="shrink-0 border border-brass/70 px-3 py-1.5 text-sm font-semibold text-brass hover:bg-brass/10"
+          className="shrink-0 text-[15px] font-semibold text-brass transition-colors hover:text-[#E6B75C]"
         >
           {copied ? "Copied" : "Copy"}
         </button>

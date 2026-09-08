@@ -21,19 +21,22 @@ export default function RoomSeats({ state, onSit, onSeatEngine, onClearSeat }: R
   const youAreSeated = state.you.color !== null
 
   return (
-    <div className="px-4 py-3">
+    <div>
       {ORDER.map((color) => {
         const seat = state.seats[color]
         return (
-          <div key={color} className="flex min-h-[2.4rem] items-center gap-2 py-1">
+          <div
+            key={color}
+            className="flex min-h-[2.75rem] items-center gap-2.5 border-t border-rule py-2"
+          >
             <span
               aria-hidden
               className={cn(
-                "h-3.5 w-3.5 shrink-0 border",
-                color === "w" ? "border-frame bg-[#F7F3EA]" : "border-graphite/50 bg-[#211F1C]",
+                "h-3 w-3 shrink-0 shadow-[0_0_0_1px_#23272B]",
+                color === "w" ? "bg-[#FAF9F7]" : "bg-[#1A1C1E]",
               )}
             />
-            <span className="w-12 shrink-0 text-sm text-graphite">{LABEL[color]}</span>
+            <span className="w-10 shrink-0 text-sm text-graphite">{LABEL[color]}</span>
 
             {seat ? (
               <>
@@ -45,14 +48,14 @@ export default function RoomSeats({ state, onSit, onSeatEngine, onClearSeat }: R
                   <button
                     type="button"
                     onClick={() => onClearSeat(color)}
-                    className="shrink-0 text-sm text-graphite underline decoration-rule underline-offset-4 hover:text-chalk"
+                    className="shrink-0 text-sm text-graphite transition-colors hover:text-chalk"
                   >
                     Remove
                   </button>
                 )}
               </>
             ) : engineFor === color ? (
-              <span className="flex flex-1 flex-wrap gap-1">
+              <span className="flex flex-1 flex-wrap gap-4">
                 {(Object.keys(ENGINES) as Difficulty[]).map((id) => (
                   <button
                     key={id}
@@ -61,26 +64,26 @@ export default function RoomSeats({ state, onSit, onSeatEngine, onClearSeat }: R
                       onSeatEngine(color, id)
                       setEngineFor(null)
                     }}
-                    className="border border-rule px-2 py-1 text-sm text-graphite hover:border-brass hover:text-chalk"
+                    className="text-sm text-graphite transition-colors hover:text-chalk"
                   >
                     {ENGINES[id].opponent}
                   </button>
                 ))}
               </span>
             ) : (
-              <span className="flex flex-1 gap-2">
+              <span className="flex flex-1 gap-4">
                 <button
                   type="button"
                   onClick={() => onSit(color)}
                   disabled={youAreSeated}
-                  className="border border-brass/70 px-2.5 py-1 text-sm font-semibold text-brass hover:bg-brass/10 disabled:opacity-30"
+                  className="text-[15px] font-semibold text-brass transition-colors hover:text-[#E6B75C] disabled:opacity-30"
                 >
                   Sit here
                 </button>
                 <button
                   type="button"
                   onClick={() => setEngineFor(color)}
-                  className="border border-rule px-2.5 py-1 text-sm text-graphite hover:border-graphite hover:text-chalk"
+                  className="text-[15px] text-graphite transition-colors hover:text-chalk"
                 >
                   Add an engine
                 </button>
@@ -91,8 +94,8 @@ export default function RoomSeats({ state, onSit, onSeatEngine, onClearSeat }: R
       })}
 
       {state.watchers.length > 0 && (
-        <p className="mt-2 border-t border-rule pt-2 text-sm text-graphite">
-          Watching: {state.watchers.join(", ")}
+        <p className="mt-3.5 text-sm text-graphite">
+          {state.watchers.join(", ")} {state.watchers.length === 1 ? "is" : "are"} watching
         </p>
       )}
     </div>

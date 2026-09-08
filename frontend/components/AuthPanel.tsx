@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { cn } from "@/lib/utils"
 
 // Everyone has one of these. A guest identity lives in a long-lived cookie,
@@ -19,12 +19,21 @@ interface AuthPanelProps {
   onSignedOut: () => void
 }
 
+/** Sits in the top bar as a name and one link. The form only appears when
+ * someone asks for it, rather than occupying a panel beside every game. */
 export default function AuthPanel({ user, onAuthenticated, onSignedOut }: AuthPanelProps) {
+  const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<"login" | "register">("login")
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false)
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [])
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -40,6 +49,7 @@ export default function AuthPanel({ user, onAuthenticated, onSignedOut }: AuthPa
       if (!response.ok) throw new Error(data.error ?? "That did not work. Try again.")
       setUsername("")
       setPassword("")
+      setOpen(false)
       onAuthenticated(data.user)
     } catch (err) {
       setError(err instanceof Error ? err.message : "That did not work. Try again.")
@@ -53,86 +63,103 @@ export default function AuthPanel({ user, onAuthenticated, onSignedOut }: AuthPa
     onSignedOut()
   }
 
-  if (user?.kind === "user") {
-    return (
-      <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-        <span className="truncate text-sm text-graphite">
-          Saving games for <span className="font-semibold text-chalk">{user.username}</span>
-        </span>
-        <button
-          type="button"
-          onClick={signOut}
-          className="shrink-0 text-sm text-graphite underline decoration-rule underline-offset-4 hover:text-chalk hover:decoration-brass"
-        >
-          Sign out
-        </button>
-      </div>
-    )
-  }
-
   return (
-    <form onSubmit={submit}>
-      <div className="flex">
-        {(["login", "register"] as const).map((option) => (
-          <button
-            key={option}
-            type="button"
-            onClick={() => {
-              setMode(option)
-              setError(null)
-            }}
-            className={cn(
-              "flex-1 border-b-2 px-3 py-2.5 text-[15px] transition-colors",
-              mode === option
-                ? "border-brass font-semibold text-chalk"
-                : "border-transparent text-graphite hover:text-chalk",
-            )}
-          >
-            {option === "login" ? "Sign in" : "Create account"}
+    <>
+      <span className="flex items-center gap-4 text-sm text-graphite">
+        <span className="hidden max-w-[10rem] truncate sm:inline">{user?.username ?? "…"}</span>
+        {user?.kind === "user" ? (
+          <button type="button" onClick={signOut} className="transition-colors hover:text-chalk">
+            Sign out
           </button>
-        ))}
-      </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="transition-colors hover:text-chalk"
+          >
+            Sign in
+          </button>
+        )}
+      </span>
 
-      <div className="flex flex-col gap-2 px-4 py-3">
-        <input
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          placeholder="Username"
-          aria-label="Username"
-          autoComplete="username"
-          required
-          minLength={3}
-          maxLength={24}
-          className="border border-rule bg-ink px-3 py-2 text-[15px] placeholder:text-graphite/70 focus:border-brass"
-        />
-        <input
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          type="password"
-          placeholder="Password"
-          aria-label="Password"
-          autoComplete={mode === "login" ? "current-password" : "new-password"}
-          required
-          minLength={8}
-          className="border border-rule bg-ink px-3 py-2 text-[15px] placeholder:text-graphite/70 focus:border-brass"
-        />
-
-        {error && <p className="text-sm text-alarm">{error}</p>}
-
-        <button
-          type="submit"
-          disabled={busy}
-          className="border border-brass/70 px-3 py-2 text-[15px] font-semibold text-brass transition-colors hover:border-brass hover:bg-brass/10 disabled:opacity-40"
+      {open && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/85 p-4"
+          onClick={() => setOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Sign in"
         >
-          {mode === "login" ? "Sign in" : "Create account"}
-        </button>
+          <form
+            onSubmit={submit}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm border border-rule bg-raise p-6"
+          >
+            <div className="flex gap-6">
+              {(["login", "register"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => {
+                    setMode(option)
+                    setError(null)
+                  }}
+                  className={cn(
+                    "border-b-2 pb-1.5 text-[15px] transition-colors",
+                    mode === option
+                      ? "border-brass font-semibold text-chalk"
+                      : "border-transparent text-graphite hover:text-chalk",
+                  )}
+                >
+                  {option === "login" ? "Sign in" : "Create account"}
+                </button>
+              ))}
+            </div>
 
-        <p className="text-sm leading-snug text-graphite">
-          {user
-            ? `Playing as ${user.username}. Your games are already saved to this browser; an account carries them to your other devices.`
-            : "An account carries your games across devices."}
-        </p>
-      </div>
-    </form>
+            <div className="mt-5 flex flex-col gap-2.5">
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Username"
+                aria-label="Username"
+                autoComplete="username"
+                autoFocus
+                required
+                minLength={3}
+                maxLength={24}
+                className="h-11 border border-rule bg-ink px-3 text-[15px] placeholder:text-graphite/70 focus:border-brass"
+              />
+              <input
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                type="password"
+                placeholder="Password"
+                aria-label="Password"
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
+                required
+                minLength={8}
+                className="h-11 border border-rule bg-ink px-3 text-[15px] placeholder:text-graphite/70 focus:border-brass"
+              />
+
+              {error && <p className="text-sm text-alarm">{error}</p>}
+
+              <button
+                type="submit"
+                disabled={busy}
+                className="h-11 bg-brass text-[15px] font-semibold text-ink transition-colors hover:bg-[#E6B75C] disabled:opacity-40"
+              >
+                {mode === "login" ? "Sign in" : "Create account"}
+              </button>
+
+              <p className="text-sm leading-relaxed text-graphite">
+                {user
+                  ? `Playing as ${user.username}. Your games are already saved to this browser; an account carries them to your other devices.`
+                  : "An account carries your games across devices."}
+              </p>
+            </div>
+          </form>
+        </div>
+      )}
+    </>
   )
 }

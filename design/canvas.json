@@ -1,0 +1,48 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1200,
+      "title": "Single player"
+    },
+    {
+      "file": "Room.dc.html",
+      "x": 1560,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Room"
+    },
+    {
+      "file": "Invite.dc.html",
+      "x": 3120,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Invite"
+    },
+    {
+      "file": "Mobile.dc.html",
+      "x": 4680,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "Phone"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "direction",
+      "x": 0,
+      "y": -170,
+      "w": 700,
+      "text": "Simpler palette: seven values, six of them neutral. The wooden board is gone (bone and graphite squares), and the last move is an inset accent rule rather than a coloured fill, so the accent is the only chroma on the page.\nNothing is stacked in one rail any more: global controls sit in the top bar, the board is dead-centre, and each flanking column does one job. History is its own full-width section below the fold."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

@@ -11,36 +11,34 @@ interface EngineSelectorProps {
 
 const ORDER: Difficulty[] = ["easy", "normal", "hard"]
 
+/** Lives in the top bar now. Choosing an opponent is a global control, not
+ * something that belongs stacked in a column beside the board. */
 export default function EngineSelector({
   difficulty,
   onDifficultyChange,
   disabled,
 }: EngineSelectorProps) {
   return (
-    <div>
-      <div className="flex" role="radiogroup" aria-label="Opponent">
-        {ORDER.map((id) => (
-          <button
-            key={id}
-            type="button"
-            role="radio"
-            aria-checked={difficulty === id}
-            onClick={() => onDifficultyChange(id)}
-            disabled={disabled}
-            className={cn(
-              "flex-1 border-b-2 px-3 py-2.5 text-[15px] transition-colors disabled:opacity-40",
-              difficulty === id
-                ? "border-brass font-semibold text-chalk"
-                : "border-transparent text-graphite hover:text-chalk",
-            )}
-          >
-            {ENGINES[id].label}
-          </button>
-        ))}
-      </div>
-      <p className="px-4 pb-3 pt-2 text-sm leading-snug text-graphite">
-        {ENGINES[difficulty].detail}
-      </p>
+    <div className="flex gap-6" role="radiogroup" aria-label="Opponent">
+      {ORDER.map((id) => (
+        <button
+          key={id}
+          type="button"
+          role="radio"
+          aria-checked={difficulty === id}
+          onClick={() => onDifficultyChange(id)}
+          disabled={disabled}
+          title={ENGINES[id].detail}
+          className={cn(
+            "border-b-2 px-0.5 py-1 text-[15px] transition-colors disabled:opacity-40",
+            difficulty === id
+              ? "border-brass font-semibold text-chalk"
+              : "border-transparent text-graphite hover:text-chalk",
+          )}
+        >
+          {ENGINES[id].label}
+        </button>
+      ))}
     </div>
   )
 }

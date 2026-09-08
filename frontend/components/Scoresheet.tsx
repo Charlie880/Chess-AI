@@ -9,9 +9,8 @@ interface ScoresheetProps {
   result: string | null
 }
 
-/** One row per half-move, written out in words. Notation still rides along on
- * the right for anyone who reads it, and the swatch says whose move it was
- * using the same mark as the player rails. */
+/** One row per half-move, written out in words, with the notation alongside.
+ * No box: the numbers and the alignment are what identify it as a scoresheet. */
 export default function Scoresheet({ moves, result }: ScoresheetProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -21,42 +20,40 @@ export default function Scoresheet({ moves, result }: ScoresheetProps) {
 
   return (
     <div>
-      <div ref={scrollRef} className={cn("overflow-y-auto", moves.length > 0 && "h-60")}>
-        {moves.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-graphite">
-            Every move is written out here as you play.
-          </p>
-        ) : (
-          <ol className="py-1">
-            {moves.map((move, i) => (
-              <li
-                key={i}
-                className="grid grid-cols-[1.5rem_0.5rem_1fr_auto] items-baseline gap-x-2 px-3 py-1"
+      <p className="mb-3 text-sm text-graphite">
+        {moves.length === 0
+          ? "Every move is written out here as you play."
+          : `${Math.ceil(moves.length / 2)} ${moves.length > 2 ? "moves" : "move"}`}
+      </p>
+
+      <div ref={scrollRef} className={cn("overflow-y-auto", moves.length > 0 && "max-h-[26rem]")}>
+        <ol>
+          {moves.map((move, i) => (
+            <li
+              key={i}
+              className="grid grid-cols-[1.1rem_1fr_auto] items-baseline gap-x-3 py-[5px]"
+            >
+              <span className="figures text-right text-[13px] text-graphite">
+                {move.color === "w" ? Math.floor(i / 2) + 1 : ""}
+              </span>
+              <span
+                className={cn(
+                  "text-[15px] leading-snug",
+                  move.color === "w" ? "text-chalk" : "text-graphite",
+                )}
               >
-                <span className="figures text-right text-sm text-graphite">
-                  {move.color === "w" ? Math.floor(i / 2) + 1 : ""}
-                </span>
-                <span
-                  aria-hidden
-                  className={cn(
-                    "h-2 w-2 self-center border",
-                    move.color === "w"
-                      ? "border-frame bg-[#F7F3EA]"
-                      : "border-graphite/50 bg-[#211F1C]",
-                  )}
-                />
-                <span className="text-[15px] leading-snug">{describeMove(move)}</span>
-                <span className="figures text-sm text-graphite">{move.san}</span>
-              </li>
-            ))}
-          </ol>
-        )}
+                {describeMove(move)}
+              </span>
+              <span className="figures text-[13px] text-graphite">{move.san}</span>
+            </li>
+          ))}
+        </ol>
       </div>
 
       {result && (
-        <div className="figures border-t border-rule px-4 py-2 text-center text-[15px] font-semibold text-brass">
+        <p className="figures mt-3 border-t border-rule pt-3 text-[15px] font-semibold text-brass">
           {result}
-        </div>
+        </p>
       )}
     </div>
   )

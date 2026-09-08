@@ -31,9 +31,9 @@ export default function PromotionDialog({ color, onSelect, onCancel }: Promotion
       aria-modal="true"
       aria-label="Choose a piece to promote to"
     >
-      <div className="bg-frame p-2" onClick={(e) => e.stopPropagation()}>
-        <p className="px-2 py-2 text-center text-[15px] text-maple">Your pawn reaches the last rank</p>
-        <div className="flex gap-px bg-frame">
+      <div onClick={(e) => e.stopPropagation()} className="text-center">
+        <p className="mb-4 text-[15px] text-graphite">Your pawn reaches the last rank</p>
+        <div className="flex gap-px">
           {CHOICES.map(({ id, name }, index) => (
             <button
               key={id}
@@ -42,13 +42,11 @@ export default function PromotionDialog({ color, onSelect, onCancel }: Promotion
               onClick={() => onSelect(id)}
               title={name}
               aria-label={name}
-              className="flex h-20 w-20 items-center justify-center bg-maple text-5xl hover:bg-[#E7CE8F]"
+              className="flex h-20 w-20 items-center justify-center bg-board-light text-5xl transition-colors hover:bg-white"
               style={{
-                color: color === "w" ? "#F7F3EA" : "#211F1C",
+                color: color === "w" ? "#FAF9F7" : "#1A1C1E",
                 textShadow:
-                  color === "w"
-                    ? "0 0 1px #211F1C, 1px 1px 0 #211F1C, -1px -1px 0 #211F1C, 1px -1px 0 #211F1C, -1px 1px 0 #211F1C"
-                    : "none",
+                  color === "w" ? "0 0 1px rgba(26,28,30,.9), 1px 1px 0 rgba(26,28,30,.55)" : "none",
               }}
             >
               {PIECE_GLYPHS[id]}

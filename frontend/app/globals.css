@@ -18,10 +18,10 @@
     font-variant-numeric: tabular-nums lining-nums;
   }
 
-  /* Archivo carries a width axis. Expanded for the one display line,
-     condensed for dense board coordinates. */
+  /* Archivo carries a width axis. Expanded for display lines, condensed for
+     dense board coordinates. */
   .wide {
-    font-stretch: 118%;
+    font-stretch: 115%;
   }
 
   .narrow {

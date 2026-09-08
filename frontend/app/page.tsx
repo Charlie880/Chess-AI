@@ -94,12 +94,14 @@ export default function ChessGame() {
   const router = useRouter()
   const [openingRoom, setOpeningRoom] = useState(false)
 
-  useEffect(() => {
+  const loadIdentity = useCallback(() => {
     fetch("/api/auth/me")
       .then((r) => r.json())
       .then((data) => setUser(data.user ?? null))
       .catch(() => setUser(null))
   }, [])
+
+  useEffect(loadIdentity, [loadIdentity])
 
   const board = game.current.board()
   const turn = game.current.turn()
@@ -260,6 +262,19 @@ export default function ChessGame() {
     })
   }
 
+  const openRoom = async () => {
+    setOpeningRoom(true)
+    try {
+      const response = await fetch("/api/rooms", { method: "POST" })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error ?? "Could not open a room")
+      router.push(`/room/${data.id}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not open a room")
+      setOpeningRoom(false)
+    }
+  }
+
   // King square, so the board can light up the checked king.
   let checkSquare: string | null = null
   if (game.current.inCheck()) {
@@ -289,39 +304,114 @@ export default function ChessGame() {
     return () => window.removeEventListener("keydown", onKey)
   }, [])
 
-  const openRoom = async () => {
-    setOpeningRoom(true)
-    try {
-      const response = await fetch("/api/rooms", { method: "POST" })
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error ?? "Could not open a room")
-      router.push(`/room/${data.id}`)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not open a room")
-      setOpeningRoom(false)
-    }
-  }
-
-  const quietButton =
-    "border border-rule px-3 py-2 text-[15px] text-graphite transition-colors hover:border-graphite hover:text-chalk disabled:opacity-40 disabled:hover:border-rule disabled:hover:text-graphite"
+  const quiet = "text-left text-[15px] text-graphite transition-colors hover:text-chalk disabled:opacity-40 disabled:hover:text-graphite"
+  const boardWidth = { width: "min(92vw, calc(100vh - 13.5rem))", maxWidth: "100%" }
 
   return (
     <div className="min-h-screen">
-      <header className="border-b border-brass/20 px-5 py-2">
-        <span className="wide text-[15px] font-semibold tracking-tight">Chess AI</span>
+      {/* Global controls live up here, not stacked beside the board. */}
+      <header className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 border-b border-rule px-6 py-3 sm:px-14">
+        <span className="wide text-base font-semibold tracking-tight">Chess AI</span>
+        <EngineSelector
+          difficulty={difficulty}
+          onDifficultyChange={setDifficulty}
+          disabled={thinking || history.length > 0}
+        />
+        <div className="flex items-center justify-end gap-6">
+          <AuthPanel user={user} onAuthenticated={(u) => { setUser(u); setHistoryKey((k) => k + 1) }} onSignedOut={() => { gameId.current = null; loadIdentity(); setHistoryKey((k) => k + 1) }} />
+          <button
+            type="button"
+            onClick={() => void newGame()}
+            disabled={thinking}
+            className="text-[15px] font-semibold text-brass transition-colors hover:text-[#E6B75C] disabled:opacity-40"
+          >
+            New game
+          </button>
+        </div>
       </header>
 
-      <main className="mx-auto flex max-w-6xl flex-col items-center gap-6 px-4 py-4 lg:flex-row lg:items-start lg:justify-center">
-        <section className="flex w-full flex-col items-center lg:w-auto">
-          <div style={{ width: "min(92vw, calc(100vh - 13rem))", maxWidth: "100%" }}>
+      {/* Board dead-centre, one job in each flanking column. */}
+      <main className="mx-auto grid max-w-[1328px] justify-center gap-x-10 gap-y-8 px-6 py-7 sm:px-10 lg:grid-cols-[minmax(0,17.5rem)_auto_minmax(0,17.5rem)] xl:gap-x-14 lg:items-start">
+        <div className="order-2 lg:order-1 lg:pt-12">
+          <p
+            className={cn(
+              "wide text-[30px] font-semibold leading-tight tracking-tight",
+              finished && "text-brass",
+            )}
+          >
+            {statusLabel}
+          </p>
+
+          {error && <p className="mt-3 text-[15px] text-alarm">{error}</p>}
+
+          {engineStalled && (
+            <button
+              type="button"
+              onClick={() => void requestEngineMove()}
+              className="mt-3 text-[15px] font-semibold text-brass hover:text-[#E6B75C]"
+            >
+              Try that move again
+            </button>
+          )}
+
+          <div className="mt-8 border-t border-rule pt-5">
+            <p className="text-[15px] font-medium">{engine.opponent}</p>
+            <p className="mt-1.5 text-sm leading-relaxed text-graphite">{engine.detail}</p>
+            {substituted && !error && (
+              <p className="mt-2 text-sm leading-relaxed text-graphite">
+                {ENGINES[difficulty].label} is unavailable, so {engine.opponent} is playing instead.
+              </p>
+            )}
+          </div>
+
+          <div className="mt-7 flex items-center gap-3">
+            <span className="text-sm text-graphite">Play as</span>
+            {(["w", "b"] as const).map((color) => (
+              <button
+                key={color}
+                type="button"
+                onClick={() => setNextColor(color)}
+                aria-pressed={nextColor === color}
+                className={cn(
+                  "text-sm transition-colors",
+                  nextColor === color ? "text-chalk underline decoration-brass underline-offset-4" : "text-graphite hover:text-chalk",
+                )}
+              >
+                {color === "w" ? "White" : "Black"}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-6 flex flex-col items-start gap-3.5">
+            <button type="button" onClick={resign} disabled={finished || thinking || history.length === 0} className={quiet}>
+              Resign
+            </button>
+            <button type="button" onClick={() => setOrientation((o) => (o === "w" ? "b" : "w"))} className={quiet}>
+              Flip board
+            </button>
+            <button
+              type="button"
+              onClick={() => void openRoom()}
+              disabled={openingRoom}
+              className="text-left text-[15px] font-semibold text-brass transition-colors hover:text-[#E6B75C] disabled:opacity-40"
+            >
+              {openingRoom ? "Opening a room…" : "Play someone else"}
+            </button>
+          </div>
+        </div>
+
+        <section className="order-1 flex flex-col items-center lg:order-2">
+          <div style={boardWidth}>
             <PlayerRail
               name={engine.opponent}
               color={opponentColor}
-              detail={engine.detail}
+              detail="engine"
               captured={captured[playerColor]}
               capturedColor={playerColor}
               advantage={leader === opponentColor ? advantage : 0}
+              active={turn === opponentColor && !finished}
               thinking={thinking}
+              edge="top"
             />
           </div>
 
@@ -336,138 +426,26 @@ export default function ChessGame() {
             onSquareClick={handleSquareClick}
           />
 
-          <div style={{ width: "min(92vw, calc(100vh - 13rem))", maxWidth: "100%" }}>
+          <div style={boardWidth}>
             <PlayerRail
               name={user ? user.username : "You"}
               color={playerColor}
-              detail={playerColor === "w" ? "playing white" : "playing black"}
+              detail={playerColor === "w" ? "white" : "black"}
               captured={captured[opponentColor]}
               capturedColor={opponentColor}
               advantage={leader === playerColor ? advantage : 0}
+              active={turn === playerColor && !finished}
+              edge="bottom"
             />
           </div>
         </section>
 
-        {/* One panel divided by hairlines, not a stack of identical cards. */}
-        <aside className="w-full divide-y divide-rule border border-rule bg-slate lg:w-[23rem]">
-          <div className="px-4 py-4">
-            <p className={cn("wide text-2xl font-semibold leading-tight tracking-tight", finished && "text-brass")}>
-              {statusLabel}
-            </p>
-            {error && <p className="mt-1.5 text-sm text-alarm">{error}</p>}
-
-            {engineStalled && (
-              <button
-                type="button"
-                onClick={() => void requestEngineMove()}
-                className="mt-2 border border-brass/70 px-3 py-1.5 text-sm font-semibold text-brass hover:bg-brass/10"
-              >
-                Try that move again
-              </button>
-            )}
-
-            {substituted && !error && (
-              <p className="mt-1.5 text-sm text-graphite">
-                {ENGINES[difficulty].label} is unavailable. {engine.opponent} is playing instead.
-              </p>
-            )}
-          </div>
-
+        <div className="order-3 lg:pt-12">
           <Scoresheet moves={playedMoves} result={resultLabel} />
-
-          {/* Locked once a game is under way: the stored record fixes the
-              opponent at creation, so switching mid-game would file the game
-              under an engine that played only part of it. */}
-          <EngineSelector
-            difficulty={difficulty}
-            onDifficultyChange={setDifficulty}
-            disabled={thinking || history.length > 0}
-          />
-
-          <div className="flex flex-col gap-2 px-4 py-3">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-graphite">Play as</span>
-              {(["w", "b"] as const).map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  onClick={() => setNextColor(color)}
-                  aria-pressed={nextColor === color}
-                  className={cn(
-                    "border px-2.5 py-1 text-sm transition-colors",
-                    nextColor === color
-                      ? "border-brass text-chalk"
-                      : "border-rule text-graphite hover:text-chalk",
-                  )}
-                >
-                  {color === "w" ? "White" : "Black"}
-                </button>
-              ))}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => void newGame()}
-              disabled={thinking}
-              className="bg-brass px-3 py-2 text-[15px] font-semibold text-ink transition-colors hover:bg-[#D9A64C] disabled:opacity-40"
-            >
-              New game
-            </button>
-
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={resign}
-                disabled={finished || thinking || history.length === 0}
-                className={quietButton}
-              >
-                Resign
-              </button>
-              <button
-                type="button"
-                onClick={() => setOrientation((o) => (o === "w" ? "b" : "w"))}
-                className={quietButton}
-              >
-                Flip board
-              </button>
-            </div>
-          </div>
-
-          <div className="px-4 py-3">
-            <button
-              type="button"
-              onClick={() => void openRoom()}
-              disabled={openingRoom}
-              className="w-full border border-brass/70 px-3 py-2 text-[15px] font-semibold text-brass transition-colors hover:bg-brass/10 disabled:opacity-40"
-            >
-              {openingRoom ? "Opening a room…" : "Play someone else"}
-            </button>
-            <p className="mt-2 text-sm leading-snug text-graphite">
-              Opens a room and gives you a link. Whoever you send it to can take
-              the other seat, or just watch.
-            </p>
-          </div>
-
-          <AuthPanel
-            user={user}
-            onAuthenticated={(u) => {
-              setUser(u)
-              setHistoryKey((k) => k + 1)
-            }}
-            onSignedOut={() => {
-              // Signing out drops back to the guest identity, so re-ask rather
-              // than assuming there is nobody here.
-              gameId.current = null
-              void fetch("/api/auth/me")
-                .then((r) => r.json())
-                .then((data) => setUser(data.user ?? null))
-                .then(() => setHistoryKey((k) => k + 1))
-            }}
-          />
-
-          <GameHistory refreshKey={historyKey} />
-        </aside>
+        </div>
       </main>
+
+      <GameHistory refreshKey={historyKey} />
 
       {pendingPromotion && (
         <PromotionDialog

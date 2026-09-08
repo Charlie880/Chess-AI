@@ -1,7 +1,7 @@
 """Game history: one document per game, updated in place as it is played."""
 
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Annotated, Literal
 
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -32,7 +32,11 @@ class GameUpdate(BaseModel):
     Replacing beats appending here: a dropped or duplicated request can't
     corrupt the move list."""
 
-    moves: list[str] = Field(default_factory=list, max_length=MAX_MOVES)
+    # Both bounds matter: the list cap stops an unbounded array, and the item
+    # cap stops 800 entries of arbitrary size. The longest real SAN is 7 chars.
+    moves: list[Annotated[str, Field(max_length=12)]] = Field(
+        default_factory=list, max_length=MAX_MOVES
+    )
     fen: str = Field(max_length=120)
     status: Status = "in_progress"
     outcome: Outcome | None = None

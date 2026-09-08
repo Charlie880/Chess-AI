@@ -13,20 +13,30 @@ _db = None
 
 
 async def connect() -> None:
-    """Open the connection and make sure the indexes exist. Safe to call twice."""
+    """Open the connection and make sure the indexes exist. Safe to call twice.
+
+    Never raises: an unreachable database must not take the engine endpoints
+    down with it. On failure persistence stays off and /auth and /games say so.
+    """
     global _client, _db
-    if not PERSISTENCE_ENABLED or _client is not None:
+    if not PERSISTENCE_ENABLED or _db is not None:
         return
 
-    _client = AsyncMongoClient(MONGO_URI, serverSelectionTimeoutMS=8000)
-    _db = _client[MONGO_DB]
+    client = AsyncMongoClient(MONGO_URI, serverSelectionTimeoutMS=8000)
+    try:
+        await client.admin.command("ping")
 
-    # Uniqueness lives in the index, not in an application-level check — a
-    # check-then-insert races two concurrent registrations of the same name.
-    await _db.users.create_index([("username", ASCENDING)], unique=True)
-    await _db.games.create_index([("user_id", ASCENDING), ("started_at", DESCENDING)])
+        database = client[MONGO_DB]
+        # Uniqueness lives in the index, not in an application-level check — a
+        # check-then-insert races two concurrent registrations of the same name.
+        await database.users.create_index([("username_lower", ASCENDING)], unique=True)
+        await database.games.create_index([("user_id", ASCENDING), ("started_at", DESCENDING)])
+    except Exception as exc:
+        await client.close()
+        log.warning("MongoDB unavailable, accounts and history are off: %s", exc)
+        return
 
-    await _client.admin.command("ping")
+    _client, _db = client, database
     log.info("Connected to MongoDB database %r", MONGO_DB)
 
 

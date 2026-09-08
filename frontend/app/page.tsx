@@ -80,6 +80,10 @@ export default function ChessGame() {
   const [error, setError] = useState<string | null>(null)
   const [pendingPromotion, setPendingPromotion] = useState<{ from: string; to: string } | null>(null)
   const [resigned, setResigned] = useState(false)
+  // Which engine actually produced the last move. The backend falls back to
+  // minimax when an engine declines, and the UI should not keep claiming you
+  // are playing a neural net that never loaded.
+  const [actualEngine, setActualEngine] = useState<Difficulty | null>(null)
 
   const [user, setUser] = useState<User | null>(null)
   const [historyKey, setHistoryKey] = useState(0)
@@ -161,6 +165,7 @@ export default function ChessGame() {
       })
       recordCapture(move)
       setLastMove({ from: move.from, to: move.to })
+      if (data.engine) setActualEngine(data.engine as Difficulty)
       bump()
       void syncGame()
     } catch (err) {
@@ -218,6 +223,7 @@ export default function ChessGame() {
     setCaptured({ w: [], b: [] })
     setPendingPromotion(null)
     setResigned(false)
+    setActualEngine(null)
     setError(null)
     bump()
 
@@ -241,7 +247,9 @@ export default function ChessGame() {
   }
 
   const resign = () => {
-    if (finished || history.length === 0) return
+    // Resigning mid-search would save the pre-move position while the engine's
+    // reply still lands on the board, leaving the two out of step.
+    if (finished || thinking || history.length === 0) return
     setResigned(true)
     void syncGame({
       status: "finished",
@@ -263,7 +271,10 @@ export default function ChessGame() {
 
   const { advantage, leader } = materialBalance(captured)
   const opponentColor: PieceColor = playerColor === "w" ? "b" : "w"
-  const engine = ENGINES[difficulty]
+  const engine = ENGINES[actualEngine ?? difficulty]
+  const substituted = actualEngine !== null && actualEngine !== difficulty
+  // The engine is stuck if it was its turn and the request failed.
+  const engineStalled = error !== null && !thinking && !finished && turn !== playerColor
 
   const statusLabel = resigned ? "You resigned." : state.label
   const resultLabel = resigned ? (playerColor === "w" ? "0-1" : "1-0") : state.result
@@ -330,14 +341,33 @@ export default function ChessGame() {
               {statusLabel}
             </p>
             {error && <p className="mt-1.5 text-sm text-alarm">{error}</p>}
+
+            {engineStalled && (
+              <button
+                type="button"
+                onClick={() => void requestEngineMove()}
+                className="mt-2 border border-brass/70 px-3 py-1.5 text-sm font-semibold text-brass hover:bg-brass/10"
+              >
+                Try that move again
+              </button>
+            )}
+
+            {substituted && !error && (
+              <p className="mt-1.5 text-sm text-graphite">
+                {ENGINES[difficulty].label} is unavailable. {engine.opponent} is playing instead.
+              </p>
+            )}
           </div>
 
           <Scoresheet moves={playedMoves} result={resultLabel} />
 
+          {/* Locked once a game is under way: the stored record fixes the
+              opponent at creation, so switching mid-game would file the game
+              under an engine that played only part of it. */}
           <EngineSelector
             difficulty={difficulty}
             onDifficultyChange={setDifficulty}
-            disabled={thinking}
+            disabled={thinking || history.length > 0}
           />
 
           <div className="flex flex-col gap-2 px-4 py-3">
@@ -374,7 +404,7 @@ export default function ChessGame() {
               <button
                 type="button"
                 onClick={resign}
-                disabled={finished || history.length === 0}
+                disabled={finished || thinking || history.length === 0}
                 className={quietButton}
               >
                 Resign

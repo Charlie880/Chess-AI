@@ -11,6 +11,7 @@ Three tiers, tried in order, because none of them is available everywhere:
 import logging
 import os
 import shutil
+import threading
 
 import chess
 import chess.engine
@@ -25,6 +26,9 @@ FALLBACK_DEPTH = 3
 
 _local_engine = None
 _local_engine_checked = False
+# /move is a sync handler, so FastAPI runs it in a threadpool: without this,
+# two concurrent first Hard-mode requests each spawn a Stockfish and orphan one.
+_engine_lock = threading.Lock()
 
 
 def _binary_path() -> str | None:
@@ -36,16 +40,34 @@ def _local() -> chess.engine.SimpleEngine | None:
     global _local_engine, _local_engine_checked
     if _local_engine_checked:
         return _local_engine
-    _local_engine_checked = True
 
-    path = _binary_path()
-    if path:
-        try:
-            _local_engine = chess.engine.SimpleEngine.popen_uci(path)
-            log.info("Using local Stockfish at %s", path)
-        except Exception as exc:
-            log.warning("Local Stockfish at %s failed to start: %s", path, exc)
+    with _engine_lock:
+        if _local_engine_checked:  # another thread won the race while we waited
+            return _local_engine
+        _local_engine_checked = True
+
+        path = _binary_path()
+        if path:
+            try:
+                _local_engine = chess.engine.SimpleEngine.popen_uci(path)
+                log.info("Using local Stockfish at %s", path)
+            except Exception as exc:
+                log.warning("Local Stockfish at %s failed to start: %s", path, exc)
     return _local_engine
+
+
+def shutdown() -> None:
+    """Stop the child process. Without this every server restart leaves a
+    stray stockfish behind."""
+    global _local_engine, _local_engine_checked
+    with _engine_lock:
+        if _local_engine is not None:
+            try:
+                _local_engine.quit()
+            except Exception:
+                pass
+            _local_engine = None
+        _local_engine_checked = False
 
 
 def _from_cloud(board: chess.Board, depth: int) -> chess.Move | None:

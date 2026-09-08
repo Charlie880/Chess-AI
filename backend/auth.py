@@ -1,7 +1,9 @@
 """Password hashing, JWT issuing, and the current-user dependency."""
 
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 
+import anyio.to_thread
 import bcrypt
 import jwt
 from bson import ObjectId
@@ -27,15 +29,38 @@ def validate_password(password: str) -> None:
         raise HTTPException(400, f"Password must be at most {MAX_PASSWORD_BYTES} bytes")
 
 
-def hash_password(password: str) -> str:
+def _hash(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
-def verify_password(password: str, password_hash: str) -> bool:
+def _verify(password: str, password_hash: str) -> bool:
     try:
         return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
     except ValueError:
         return False
+
+
+# bcrypt deliberately costs ~100-300ms. Run it off the event loop, or a handful
+# of concurrent sign-ins stalls every other request on the process, /move
+# included.
+async def hash_password(password: str) -> str:
+    return await anyio.to_thread.run_sync(_hash, password)
+
+
+async def verify_password(password: str, password_hash: str) -> bool:
+    return await anyio.to_thread.run_sync(_verify, password, password_hash)
+
+
+@lru_cache(maxsize=1)
+def _decoy_hash() -> str:
+    """A real hash to check against when the username does not exist, so a
+    failed login costs the same either way. Without it, a miss returns in ~1ms
+    and a hit in ~200ms, which reliably enumerates accounts."""
+    return _hash("no-such-account")
+
+
+async def verify_against_decoy(password: str) -> None:
+    await verify_password(password, _decoy_hash())
 
 
 def create_token(user_id: str) -> str:
@@ -48,10 +73,17 @@ def create_token(user_id: str) -> str:
 
 
 def require_persistence() -> None:
+    """503 with the reason. Config missing and database unreachable are
+    different problems and need different fixes."""
     if not PERSISTENCE_ENABLED:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "Accounts and history are disabled: set MONGO_URI and JWT_SECRET in backend/.env",
+        )
+    if db.database() is None:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "The database is not reachable. Check MONGO_URI and that the server is running.",
         )
 
 

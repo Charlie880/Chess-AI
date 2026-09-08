@@ -15,6 +15,7 @@ from auth import (
     public_user,
     require_persistence,
     validate_password,
+    verify_against_decoy,
     verify_password,
 )
 
@@ -38,8 +39,10 @@ async def register(body: Credentials):
 
     document = {
         "username": username,
+        # Uniqueness and lookup both run on the folded form, so Alice and alice
+        # are the same account. `username` keeps the casing they typed.
         "username_lower": username.lower(),
-        "password_hash": hash_password(body.password),
+        "password_hash": await hash_password(body.password),
         "created_at": datetime.now(timezone.utc),
     }
     try:
@@ -54,11 +57,14 @@ async def register(body: Credentials):
 @router.post("/login")
 async def login(body: Credentials):
     require_persistence()
-    user = await db.users().find_one({"username": body.username.strip()})
+    user = await db.users().find_one({"username_lower": body.username.strip().lower()})
 
-    # Same message and roughly the same work either way, so the response does
-    # not reveal whether the account exists.
-    if user is None or not verify_password(body.password, user["password_hash"]):
+    # Same message and the same work either way, so neither the response nor
+    # how long it took reveals whether the account exists.
+    if user is None:
+        await verify_against_decoy(body.password)
+        raise HTTPException(401, "Incorrect username or password")
+    if not await verify_password(body.password, user["password_hash"]):
         raise HTTPException(401, "Incorrect username or password")
 
     return {"token": create_token(str(user["_id"])), "user": public_user(user)}

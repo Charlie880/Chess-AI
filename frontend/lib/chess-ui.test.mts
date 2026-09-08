@@ -40,10 +40,27 @@ for (const [name, line, expected] of cases) {
 }
 
 // Promotion needs a constructed position rather than a long opening.
-const promo = new Chess("8/P6k/8/8/8/8/8/7K w - - 0 1")
-promo.move({ from: "a7", to: "a8", promotion: "r" })
-const promoMove = (promo.history({ verbose: true }) as unknown as PlayedMove[])[0]
-assert.equal(describeMove(promoMove), "Pawn a7 to a8, promotes to rook")
-console.log(`promotion: ${describeMove(promoMove)}`)
+function describeFrom(fen: string, move: { from: string; to: string; promotion?: string }) {
+  const game = new Chess(fen)
+  game.move(move)
+  return describeMove((game.history({ verbose: true }) as unknown as PlayedMove[])[0])
+}
+
+const promotion = describeFrom("8/P6k/8/8/8/8/8/7K w - - 0 1", {
+  from: "a7",
+  to: "a8",
+  promotion: "r",
+})
+assert.equal(promotion, "Pawn a7 to a8, promotes to rook")
+console.log(`promotion: ${promotion}`)
+
+// A capture and a promotion on the same move: both halves must be narrated.
+const capturePromotion = describeFrom("r6k/1P6/8/8/8/8/8/7K w - - 0 1", {
+  from: "b7",
+  to: "a8",
+  promotion: "q",
+})
+assert.equal(capturePromotion, "Pawn b7 takes rook a8, promotes to queen, check")
+console.log(`capture-promotion: ${capturePromotion}`)
 
 console.log("all ok")

@@ -22,6 +22,7 @@ async def lifespan(_: FastAPI):
     await db.connect()
     yield
     await db.close()
+    stockfish_engine.shutdown()
 
 
 app = FastAPI(title="Chess Engine API", lifespan=lifespan)
@@ -31,7 +32,7 @@ app = FastAPI(title="Chess Engine API", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_methods=["POST", "GET"],
+    allow_methods=["GET", "POST", "PUT"],
     allow_headers=["*"],
 )
 
@@ -53,7 +54,11 @@ app.include_router(routes_games.router)
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "engines": sorted(ENGINES), "persistence": PERSISTENCE_ENABLED}
+    return {
+        "status": "ok",
+        "engines": sorted(ENGINES),
+        "persistence": PERSISTENCE_ENABLED and db.database() is not None,
+    }
 
 
 @app.post("/move")
@@ -72,16 +77,24 @@ def make_move(request: MoveRequest):
 
     try:
         move = engine(board)
-    except Exception as exc:
+    except Exception:
+        # Logged in full above; the client gets a fixed string, because
+        # exception text here can carry filesystem paths from the engine.
         log.exception("Engine '%s' raised", request.difficulty)
-        raise HTTPException(502, f"Engine failure: {exc}")
+        raise HTTPException(502, "The engine failed to produce a move")
 
     # An engine may decline (CNN with no model, search with no result). Minimax
     # is always available, so fall back to it rather than failing the request.
+    # The response says which engine actually moved, so the UI can stop
+    # claiming you are playing a neural net that never loaded.
+    engine_used = request.difficulty
     if move is None or move not in board.legal_moves:
         if move is not None:
             log.warning("Engine '%s' returned illegal move %s", request.difficulty, move.uci())
+        else:
+            log.warning("Engine '%s' declined to move, falling back to minimax", request.difficulty)
         move = minmax_engine.get_move(board, depth=2)
+        engine_used = "normal"
     if move is None:
         raise HTTPException(500, "No legal move could be produced")
 
@@ -95,6 +108,7 @@ def make_move(request: MoveRequest):
         "promotion": chess.piece_symbol(move.promotion) if move.promotion else None,
         "san": san,
         "fen": board.fen(),
+        "engine": engine_used,
         "gameOver": board.is_game_over(),
         "result": board.result() if board.is_game_over() else None,
     }

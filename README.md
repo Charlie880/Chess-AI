@@ -75,7 +75,8 @@ request cannot corrupt the move list.
 
 **Collections**
 
-`users`: `username` (unique index), `password_hash` (bcrypt), `created_at`.
+`users`: `username` as typed, `username_lower` (unique index, so `Alice` and
+`alice` are one account), `password_hash` (bcrypt), `created_at`.
 
 `games`: `user_id`, `difficulty`, `player_color`, `moves` (SAN), `fen`,
 `status`, `outcome` (win/loss/draw, from the player's side), `result` (`1-0`),
@@ -99,6 +100,11 @@ httpOnly, sameSite=lax cookie and attach it server-side, so an XSS on the page
 cannot read it. Passwords are bcrypt-hashed, capped at bcrypt's 72-byte limit
 rather than being silently truncated, and login returns one message whether or
 not the account exists.
+
+Hashing runs in a worker thread, since bcrypt deliberately costs 100-300ms and
+would otherwise block every other request on the process. A login for an
+unknown user is checked against a decoy hash so it takes the same time as a
+real one and cannot be used to enumerate accounts.
 
 Not done: rate limiting on login, email/password reset, and refresh tokens.
 
@@ -125,9 +131,15 @@ POST /move
 {
   "move": "e2e4", "from": "e2", "to": "e4", "promotion": null,
   "san": "e4", "fen": "<position after>",
+  "engine": "normal",
   "gameOver": false, "result": null
 }
 ```
+
+`engine` names the engine that actually moved, which is not always the one
+asked for: if the CNN has no weights, or a search returns nothing, the request
+falls back to minimax rather than failing, and the UI says so instead of
+claiming you are still playing a neural net.
 
 `400` invalid FEN, unknown difficulty, or a finished game. `502` engine failure.
 

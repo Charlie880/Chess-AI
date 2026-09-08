@@ -67,18 +67,22 @@ export function describeMove(move: PlayedMove): string {
 
   const mover = PIECE_NAMES[move.piece]
 
+  // A capture and a promotion can happen on the same move (bxa8=Q), so this
+  // builds one sentence rather than returning on whichever it checks first.
+  let sentence: string
   if (move.captured) {
     const victim = PIECE_NAMES[move.captured].toLowerCase()
     const passing = move.flags.includes("e") ? " en passant" : ""
-    return withCheck(`${mover} ${move.from} takes ${victim} ${move.to}${passing}`, move.san)
+    sentence = `${mover} ${move.from} takes ${victim} ${move.to}${passing}`
+  } else {
+    sentence = `${mover} ${move.from} to ${move.to}`
   }
 
   if (move.promotion) {
-    const promoted = PIECE_NAMES[move.promotion].toLowerCase()
-    return withCheck(`${mover} ${move.from} to ${move.to}, promotes to ${promoted}`, move.san)
+    sentence += `, promotes to ${PIECE_NAMES[move.promotion].toLowerCase()}`
   }
 
-  return withCheck(`${mover} ${move.from} to ${move.to}`, move.san)
+  return withCheck(sentence, move.san)
 }
 
 function withCheck(sentence: string, san: string): string {

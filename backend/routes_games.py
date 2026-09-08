@@ -17,6 +17,10 @@ router = APIRouter(prefix="/games", tags=["games"])
 # push an unbounded array into the document.
 MAX_MOVES = 800
 
+# Kept next to the storage layer so a saved game reads the same whether it was
+# written here or by a room.
+ENGINE_LABELS = {"easy": "Neural net", "normal": "Minimax", "hard": "Stockfish"}
+
 Status = Literal["in_progress", "finished"]
 Outcome = Literal["win", "loss", "draw"]
 Termination = Literal["checkmate", "stalemate", "draw", "resigned"]
@@ -47,7 +51,12 @@ class GameUpdate(BaseModel):
 def _serialize(game: dict) -> dict:
     return {
         "id": str(game["_id"]),
-        "difficulty": game["difficulty"],
+        "difficulty": game.get("difficulty"),
+        # Room games are played against a person, so the opponent is a name
+        # rather than a difficulty. `.get` keeps games saved before rooms
+        # existed readable.
+        "mode": game.get("mode", "engine"),
+        "opponent": game.get("opponent") or ENGINE_LABELS.get(game.get("difficulty"), "Engine"),
         "playerColor": game["player_color"],
         "moves": game["moves"],
         "fen": game["fen"],
@@ -79,7 +88,9 @@ async def create_game(body: NewGame, user: dict = Depends(current_user)):
     now = datetime.now(timezone.utc)
     document = {
         "user_id": user["_id"],
+        "mode": "engine",
         "difficulty": body.difficulty,
+        "opponent": ENGINE_LABELS[body.difficulty],
         "player_color": body.playerColor,
         "moves": [],
         "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",

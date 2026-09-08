@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
 import { Chess, type Move } from "chess.js"
 
 import AuthPanel, { type User } from "@/components/AuthPanel"
@@ -90,6 +91,8 @@ export default function ChessGame() {
   // Not state: the persisted game's id is read inside async callbacks that
   // would otherwise close over a stale value.
   const gameId = useRef<string | null>(null)
+  const router = useRouter()
+  const [openingRoom, setOpeningRoom] = useState(false)
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -288,6 +291,19 @@ export default function ChessGame() {
     return () => window.removeEventListener("keydown", onKey)
   }, [])
 
+  const openRoom = async () => {
+    setOpeningRoom(true)
+    try {
+      const response = await fetch("/api/rooms", { method: "POST" })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error ?? "Could not open a room")
+      router.push(`/room/${data.id}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not open a room")
+      setOpeningRoom(false)
+    }
+  }
+
   const quietButton =
     "border border-rule px-3 py-2 text-[15px] text-graphite transition-colors hover:border-graphite hover:text-chalk disabled:opacity-40 disabled:hover:border-rule disabled:hover:text-graphite"
 
@@ -417,6 +433,21 @@ export default function ChessGame() {
                 Flip board
               </button>
             </div>
+          </div>
+
+          <div className="px-4 py-3">
+            <button
+              type="button"
+              onClick={() => void openRoom()}
+              disabled={openingRoom}
+              className="w-full border border-brass/70 px-3 py-2 text-[15px] font-semibold text-brass transition-colors hover:bg-brass/10 disabled:opacity-40"
+            >
+              {openingRoom ? "Opening a room…" : "Play someone else"}
+            </button>
+            <p className="mt-2 text-sm leading-snug text-graphite">
+              Opens a room and gives you a link. Whoever you send it to can take
+              the other seat, or just watch.
+            </p>
           </div>
 
           <AuthPanel

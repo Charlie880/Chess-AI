@@ -11,6 +11,7 @@ from pydantic import BaseModel
 import db
 import routes_auth
 import routes_games
+import routes_rooms
 from config import PERSISTENCE_ENABLED
 from engines import cnn_engine, minmax_engine, stockfish_engine
 
@@ -50,6 +51,7 @@ class MoveRequest(BaseModel):
 
 app.include_router(routes_auth.router)
 app.include_router(routes_games.router)
+app.include_router(routes_rooms.router)
 
 
 @app.get("/health")

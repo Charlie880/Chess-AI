@@ -72,6 +72,36 @@ def create_token(user_id: str) -> str:
     )
 
 
+# A room's WebSocket runs against the API directly, not through the Next
+# proxy, so the httpOnly session cookie cannot be relied on to reach it. The
+# client asks the proxy for one of these instead: short-lived, single purpose,
+# and useless for anything but naming who is sitting down.
+WS_TICKET_MINUTES = 5
+
+
+def create_ws_ticket(user_id: str) -> str:
+    now = datetime.now(timezone.utc)
+    return jwt.encode(
+        {"sub": user_id, "scope": "ws", "iat": now, "exp": now + timedelta(minutes=WS_TICKET_MINUTES)},
+        JWT_SECRET,
+        algorithm=JWT_ALGORITHM,
+    )
+
+
+def read_ws_ticket(ticket: str | None) -> str | None:
+    """The user id a ticket names, or None if it is missing, expired, forged,
+    or a session token being passed off as a ticket."""
+    if not ticket or not JWT_SECRET:
+        return None
+    try:
+        payload = jwt.decode(ticket, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.PyJWTError:
+        return None
+    if payload.get("scope") != "ws":
+        return None
+    return payload.get("sub")
+
+
 def require_persistence() -> None:
     """503 with the reason. Config missing and database unreachable are
     different problems and need different fixes."""

@@ -12,7 +12,7 @@ import db
 import routes_auth
 import routes_games
 import routes_rooms
-from config import PERSISTENCE_ENABLED
+from config import CORS_ORIGINS, PERSISTENCE_ENABLED
 from engines import cnn_engine, minmax_engine, stockfish_engine
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -28,11 +28,12 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Chess Engine API", lifespan=lifespan)
 
-# The Next.js route handler proxies server-side and doesn't need this, but it
-# lets the API be hit directly from a browser during development.
+# The Next route handlers proxy server-side and do not need this, but the
+# room WebSocket talks to the API directly and a tunnelled deploy serves the
+# page from a public hostname. Set CORS_ORIGINS to that hostname.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=CORS_ORIGINS,
     allow_methods=["GET", "POST", "PUT"],
     allow_headers=["*"],
 )

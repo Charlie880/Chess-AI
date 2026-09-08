@@ -9,9 +9,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 import db
-from auth import current_user
+from auth import Identity, current_identity, require_persistence
 
-router = APIRouter(prefix="/games", tags=["games"])
+# A guest identity needs no database, so unlike before, having a caller no
+# longer implies having somewhere to store their games. Every route here needs
+# both, and this says so once rather than in each handler.
+router = APIRouter(
+    prefix="/games", tags=["games"], dependencies=[Depends(require_persistence)]
+)
 
 # A standard game is well under this; the cap only exists so a client cannot
 # push an unbounded array into the document.
@@ -48,6 +53,15 @@ class GameUpdate(BaseModel):
     termination: Termination | None = None
 
 
+def owner_filter(identity: Identity) -> dict:
+    """Which games belong to the caller. An account is keyed by its ObjectId,
+    a guest by the random id in their cookie; both are bearer credentials and
+    neither is ever taken from the request body."""
+    if identity.kind == "user":
+        return {"user_id": ObjectId(identity.id)}
+    return {"guest_id": identity.id}
+
+
 def _serialize(game: dict) -> dict:
     return {
         "id": str(game["_id"]),
@@ -70,24 +84,24 @@ def _serialize(game: dict) -> dict:
     }
 
 
-async def _owned_game(game_id: str, user: dict) -> dict:
+async def _owned_game(game_id: str, identity: Identity) -> dict:
     try:
         oid = ObjectId(game_id)
     except InvalidId:
         raise HTTPException(404, "Game not found")
     # Scope by user_id in the query itself, so another account's id is a 404
     # rather than a document we then have to remember to check.
-    game = await db.games().find_one({"_id": oid, "user_id": user["_id"]})
+    game = await db.games().find_one({"_id": oid, **owner_filter(identity)})
     if game is None:
         raise HTTPException(404, "Game not found")
     return game
 
 
 @router.post("", status_code=201)
-async def create_game(body: NewGame, user: dict = Depends(current_user)):
+async def create_game(body: NewGame, identity: Identity = Depends(current_identity)):
     now = datetime.now(timezone.utc)
     document = {
-        "user_id": user["_id"],
+        **owner_filter(identity),
         "mode": "engine",
         "difficulty": body.difficulty,
         "opponent": ENGINE_LABELS[body.difficulty],
@@ -108,8 +122,8 @@ async def create_game(body: NewGame, user: dict = Depends(current_user)):
 
 
 @router.put("/{game_id}")
-async def update_game(game_id: str, body: GameUpdate, user: dict = Depends(current_user)):
-    game = await _owned_game(game_id, user)
+async def update_game(game_id: str, body: GameUpdate, identity: Identity = Depends(current_identity)):
+    game = await _owned_game(game_id, identity)
     if game["status"] == "finished":
         raise HTTPException(409, "That game is already finished")
 
@@ -131,11 +145,11 @@ async def update_game(game_id: str, body: GameUpdate, user: dict = Depends(curre
 
 
 @router.get("/stats")
-async def stats(user: dict = Depends(current_user)):
+async def stats(identity: Identity = Depends(current_identity)):
     """Win/loss/draw split, plus totals. Declared before /{game_id} so the
     literal path is not swallowed by the parameterised one."""
     pipeline = [
-        {"$match": {"user_id": user["_id"], "status": "finished"}},
+        {"$match": {**owner_filter(identity), "status": "finished"}},
         {"$group": {"_id": "$outcome", "count": {"$sum": 1}}},
     ]
     counts = {"win": 0, "loss": 0, "draw": 0}
@@ -143,20 +157,20 @@ async def stats(user: dict = Depends(current_user)):
         if row["_id"] in counts:
             counts[row["_id"]] = row["count"]
 
-    total = await db.games().count_documents({"user_id": user["_id"]})
+    total = await db.games().count_documents(owner_filter(identity))
     return {**counts, "finished": sum(counts.values()), "total": total}
 
 
 @router.get("")
 async def list_games(
-    user: dict = Depends(current_user),
+    identity: Identity = Depends(current_identity),
     limit: int = Query(default=25, ge=1, le=100),
     skip: int = Query(default=0, ge=0),
 ):
-    cursor = db.games().find({"user_id": user["_id"]}).sort("started_at", -1).skip(skip).limit(limit)
+    cursor = db.games().find(owner_filter(identity)).sort("started_at", -1).skip(skip).limit(limit)
     return [_serialize(game) async for game in cursor]
 
 
 @router.get("/{game_id}")
-async def get_game(game_id: str, user: dict = Depends(current_user)):
-    return _serialize(await _owned_game(game_id, user))
+async def get_game(game_id: str, identity: Identity = Depends(current_identity)):
+    return _serialize(await _owned_game(game_id, identity))

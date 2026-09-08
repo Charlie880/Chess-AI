@@ -31,6 +31,9 @@ async def connect() -> None:
         # check-then-insert races two concurrent registrations of the same name.
         await database.users.create_index([("username_lower", ASCENDING)], unique=True)
         await database.games.create_index([("user_id", ASCENDING), ("started_at", DESCENDING)])
+        # Guests own games too, keyed by the id in their cookie rather than
+        # a user record.
+        await database.games.create_index([("guest_id", ASCENDING), ("started_at", DESCENDING)])
     except Exception as exc:
         await client.close()
         log.warning("MongoDB unavailable, accounts and history are off: %s", exc)

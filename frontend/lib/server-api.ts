@@ -3,30 +3,51 @@ import { NextResponse } from "next/server"
 
 export const BACKEND_URL = process.env.BACKEND_URL ?? "http://127.0.0.1:8000"
 
-// The JWT lives in an httpOnly cookie and is attached here, server-side. It is
-// never handed to page JavaScript, so an XSS on the page cannot read it.
+// Two credentials, both httpOnly so page JavaScript can never read either.
+//
+// The session cookie is an account. The guest cookie is the identity everyone
+// else gets, minted on first visit and kept for a year, so somebody who never
+// signs up still owns their games and still sees their own history. Signing
+// out clears only the session, which drops you back to the guest you were.
 export const TOKEN_COOKIE = "chess_token"
+export const GUEST_COOKIE = "chess_guest"
 
-const COOKIE_OPTIONS = {
+const BASE = {
   httpOnly: true,
   sameSite: "lax" as const,
   secure: process.env.NODE_ENV === "production",
   path: "/",
-  maxAge: 60 * 60 * 24 * 7,
 }
 
+const SESSION_OPTIONS = { ...BASE, maxAge: 60 * 60 * 24 * 7 }
+const GUEST_OPTIONS = { ...BASE, maxAge: 60 * 60 * 24 * 365 }
+
 export function setTokenCookie(response: NextResponse, token: string) {
-  response.cookies.set(TOKEN_COOKIE, token, COOKIE_OPTIONS)
+  response.cookies.set(TOKEN_COOKIE, token, SESSION_OPTIONS)
+  return response
+}
+
+export function setGuestCookie(response: NextResponse, token: string) {
+  response.cookies.set(GUEST_COOKIE, token, GUEST_OPTIONS)
   return response
 }
 
 export function clearTokenCookie(response: NextResponse) {
-  response.cookies.set(TOKEN_COOKIE, "", { ...COOKIE_OPTIONS, maxAge: 0 })
+  response.cookies.set(TOKEN_COOKIE, "", { ...SESSION_OPTIONS, maxAge: 0 })
   return response
 }
 
-export async function authToken(): Promise<string | null> {
+export function sessionToken(): string | null {
   return cookies().get(TOKEN_COOKIE)?.value ?? null
+}
+
+export function guestToken(): string | null {
+  return cookies().get(GUEST_COOKIE)?.value ?? null
+}
+
+/** Whichever credential the caller has, preferring a real account. */
+export async function authToken(): Promise<string | null> {
+  return sessionToken() ?? guestToken()
 }
 
 type ProxyOptions = { method?: string; body?: unknown; token?: string | null }
@@ -66,11 +87,32 @@ export async function callBackend(path: string, options: ProxyOptions = {}) {
   return { ok: true as const, status: response.status, data }
 }
 
-/** Every /api/games route needs the same "are you signed in" preamble. */
-export async function withAuth(
+/** A credential for this visitor, minting a guest identity if they have none.
+ * `freshGuest` must be written onto the response so the same guest comes back
+ * next time; otherwise every request would mint a new one and history would
+ * never accumulate. */
+export async function ensureIdentity(): Promise<{
+  token: string | null
+  freshGuest?: string
+}> {
+  const existing = sessionToken() ?? guestToken()
+  if (existing) return { token: existing }
+
+  const minted = await callBackend("/auth/guest", { method: "POST" })
+  if (!minted.ok) return { token: null }
+
+  const token = (minted.data as { token: string }).token
+  return { token, freshGuest: token }
+}
+
+/** Every /api/games and /api/rooms route needs the same identity preamble. */
+export async function withIdentity(
   handler: (token: string) => Promise<NextResponse>,
 ): Promise<NextResponse> {
-  const token = await authToken()
-  if (!token) return NextResponse.json({ error: "Not signed in" }, { status: 401 })
-  return handler(token)
+  const { token, freshGuest } = await ensureIdentity()
+  if (!token) {
+    return NextResponse.json({ error: "Could not establish an identity" }, { status: 503 })
+  }
+  const response = await handler(token)
+  return freshGuest ? setGuestCookie(response, freshGuest) : response
 }

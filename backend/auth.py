@@ -1,5 +1,7 @@
 """Password hashing, JWT issuing, and the current-user dependency."""
 
+import secrets
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 
@@ -63,13 +65,43 @@ async def verify_against_decoy(password: str) -> None:
     await verify_password(password, _decoy_hash())
 
 
-def create_token(user_id: str) -> str:
+# Everyone who plays has an identity, so every game has an owner. An account
+# is one kind; a guest is the other, carrying a random id that lives in a
+# long-lived cookie so their history survives closing the tab.
+GUEST_EXPIRE_DAYS = 365
+
+
+@dataclass
+class Identity:
+    kind: str  # "user" | "guest"
+    id: str
+    name: str
+    document: dict | None = None  # the Mongo user record, for accounts
+
+
+def create_token(subject: str, kind: str = "user") -> str:
     now = datetime.now(timezone.utc)
+    lifetime = (
+        timedelta(days=GUEST_EXPIRE_DAYS)
+        if kind == "guest"
+        else timedelta(minutes=JWT_EXPIRE_MINUTES)
+    )
     return jwt.encode(
-        {"sub": user_id, "iat": now, "exp": now + timedelta(minutes=JWT_EXPIRE_MINUTES)},
+        {"sub": subject, "kind": kind, "iat": now, "exp": now + lifetime},
         JWT_SECRET,
         algorithm=JWT_ALGORITHM,
     )
+
+
+def new_guest() -> tuple[str, str]:
+    """(guest id, display name). The id is a bearer credential in a cookie, so
+    it needs the entropy of one."""
+    guest_id = secrets.token_urlsafe(16)
+    return guest_id, f"Guest {guest_id[:4]}"
+
+
+def guest_name(guest_id: str) -> str:
+    return f"Guest {guest_id[:4]}"
 
 
 # A room's WebSocket runs against the API directly, not through the Next
@@ -79,17 +111,24 @@ def create_token(user_id: str) -> str:
 WS_TICKET_MINUTES = 5
 
 
-def create_ws_ticket(user_id: str) -> str:
+def create_ws_ticket(identity: Identity) -> str:
     now = datetime.now(timezone.utc)
     return jwt.encode(
-        {"sub": user_id, "scope": "ws", "iat": now, "exp": now + timedelta(minutes=WS_TICKET_MINUTES)},
+        {
+            "sub": identity.id,
+            "kind": identity.kind,
+            "name": identity.name,
+            "scope": "ws",
+            "iat": now,
+            "exp": now + timedelta(minutes=WS_TICKET_MINUTES),
+        },
         JWT_SECRET,
         algorithm=JWT_ALGORITHM,
     )
 
 
-def read_ws_ticket(ticket: str | None) -> str | None:
-    """The user id a ticket names, or None if it is missing, expired, forged,
+def read_ws_ticket(ticket: str | None) -> Identity | None:
+    """The identity a ticket names, or None if it is missing, expired, forged,
     or a session token being passed off as a ticket."""
     if not ticket or not JWT_SECRET:
         return None
@@ -99,7 +138,11 @@ def read_ws_ticket(ticket: str | None) -> str | None:
         return None
     if payload.get("scope") != "ws":
         return None
-    return payload.get("sub")
+    kind = payload.get("kind")
+    subject = payload.get("sub")
+    if kind not in ("user", "guest") or not subject:
+        return None
+    return Identity(kind=kind, id=subject, name=payload.get("name") or "Player")
 
 
 def require_persistence() -> None:
@@ -117,23 +160,48 @@ def require_persistence() -> None:
         )
 
 
-async def current_user(
+def _decode(token: str) -> dict:
+    if not JWT_SECRET:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Identity is disabled: set JWT_SECRET in backend/.env",
+        )
+    try:
+        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.PyJWTError:
+        raise HTTPException(401, "Invalid or expired token")
+
+
+async def current_identity(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
-) -> dict:
-    require_persistence()
+) -> Identity:
+    """An account or a guest. Guests need no database, so a room still works
+    when Mongo is down; only reading and writing history needs it."""
     if credentials is None:
         raise HTTPException(401, "Not authenticated")
-
-    try:
-        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        user_id = ObjectId(payload["sub"])
-    except (jwt.PyJWTError, InvalidId, KeyError):
+    payload = _decode(credentials.credentials)
+    subject = payload.get("sub")
+    if not subject:
         raise HTTPException(401, "Invalid or expired token")
 
-    user = await db.users().find_one({"_id": user_id})
+    if payload.get("kind") == "guest":
+        return Identity(kind="guest", id=subject, name=guest_name(subject))
+
+    require_persistence()
+    try:
+        user = await db.users().find_one({"_id": ObjectId(subject)})
+    except InvalidId:
+        raise HTTPException(401, "Invalid or expired token")
     if user is None:
         raise HTTPException(401, "Invalid or expired token")
-    return user
+    return Identity(kind="user", id=str(user["_id"]), name=user["username"], document=user)
+
+
+async def current_user(identity: Identity = Depends(current_identity)) -> dict:
+    """For the routes that genuinely need a registered account."""
+    if identity.kind != "user" or identity.document is None:
+        raise HTTPException(403, "That needs a registered account")
+    return identity.document
 
 
 def public_user(user: dict) -> dict:
@@ -143,3 +211,9 @@ def public_user(user: dict) -> dict:
         "username": user["username"],
         "createdAt": user["created_at"].isoformat(),
     }
+
+
+def public_identity(identity: Identity) -> dict:
+    if identity.kind == "user" and identity.document is not None:
+        return {"kind": "user", **public_user(identity.document)}
+    return {"kind": "guest", "id": identity.id, "username": identity.name}

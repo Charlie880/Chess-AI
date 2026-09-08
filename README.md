@@ -82,18 +82,41 @@ request cannot corrupt the move list.
 `users`: `username` as typed, `username_lower` (unique index, so `Alice` and
 `alice` are one account), `password_hash` (bcrypt), `created_at`.
 
+Guests have no `users` row at all. Their identity is the signed id in their
+cookie, and their games carry `guest_id` where an account's carry `user_id`;
+every query scopes on whichever the caller presents.
+
 `games`: `user_id`, `mode` (`engine` or `room`), `opponent` (an engine name or
 a person's), `difficulty` (engine games only), `player_color`, `moves` (SAN), `fen`,
 `status`, `outcome` (win/loss/draw, from the player's side), `result` (`1-0`),
 `termination` (checkmate/stalemate/draw/resigned), and timestamps. Indexed on
 `(user_id, started_at desc)`.
 
+### Identity
+
+Everyone who plays has one, so every game has an owner.
+
+An **account** is a row in `users` and a session token. A **guest** is a signed
+random id in a long-lived cookie and nothing else — no database row, so rooms
+work even when Mongo is down. Both are the same kind of credential downstream:
+one `Authorization: Bearer` header, one `current_identity` dependency, one
+owner filter.
+
+The two live in separate httpOnly cookies, `chess_token` and `chess_guest`, so
+signing out clears the session and drops you back to the guest you already
+were, with that history intact, rather than erasing you. A guest cookie lasts a
+year. Neither is readable from page JavaScript.
+
+Signing in is therefore not how you start being counted; it is how you carry
+your games to another browser.
+
 **Auth endpoints**
 
 ```
 POST /auth/register  {username, password} -> {token, user}
 POST /auth/login     {username, password} -> {token, user}
-GET  /auth/me        Bearer token         -> user
+POST /auth/guest                          -> {token, user}  (no account needed)
+GET  /auth/me        Bearer token         -> user or guest
 POST /games          {difficulty, playerColor}
 PUT  /games/{id}     {moves, fen, status, outcome, result, termination}
 GET  /games          most recent first
@@ -116,8 +139,12 @@ Not done: rate limiting on login, email/password reset, and refresh tokens.
 ## Playing someone else
 
 "Play someone else" opens a room and hands you a link. Whoever you send it to
-picks a name and either takes the free seat or watches. No account is needed;
-signing in only means the finished game lands in your history.
+picks a name and either takes the free seat or watches.
+
+**Rooms are tied to identity.** A join without a valid ticket is closed, so
+every seat has an owner and every finished game has somewhere to go. That does
+not mean a sign-up wall: a visitor without an account is handed a *guest*
+identity automatically, and the room accepts it exactly like an account.
 
 Either seat can also be filled by an engine, so a room works as a game between
 two people, a game against a machine that others can watch, or two engines
@@ -135,17 +162,55 @@ on restart, and an empty one is dropped after six hours. The room id is a
 `secrets.token_urlsafe(9)` and is the only thing protecting a room, so treat
 the link as the invitation it is.
 
-**Reaching it from another machine.** Start the API on all interfaces and point
-the browser at your machine's address rather than `localhost`:
+### Who can actually reach the link
+
+**As it stands, everyone has to be on the same network.** The link contains
+your machine's address, so it works for you, for another browser on the same
+machine, and for anyone on the same LAN or VPN. It does not work for someone
+across the internet, because nothing here is publicly routable.
+
+For a LAN, start the API on all interfaces and hand out your machine's address
+rather than `localhost`:
 
 ```bash
 uvicorn main:app --host 0.0.0.0 --port 8000
+npm run dev -- --hostname 0.0.0.0
 ```
 
-The page derives the WebSocket URL from its own hostname and port 8000, so a
-link that works for you works for anyone on the same network. If the API lives
-somewhere else, set `NEXT_PUBLIC_API_URL` for the frontend. Reaching it over
-the internet needs a tunnel or a deploy; nothing here assumes one.
+Then share `http://<your-ip>:3000/room/<id>`. The page derives the WebSocket URL
+from its own hostname, so the link works for whoever opens it.
+
+### Going public with a tunnel
+
+Two hostnames are needed, because the room's WebSocket talks to the API
+directly and a Next route handler cannot proxy one. With cloudflared:
+
+```bash
+cloudflared tunnel --url http://localhost:3000   # the page
+cloudflared tunnel --url http://localhost:8000   # the API
+```
+
+ngrok works the same way (`ngrok http 3000`, `ngrok http 8000`). Then wire the
+two together — `frontend/.env.local`:
+
+```
+NEXT_PUBLIC_API_URL=https://<api-tunnel-host>
+BACKEND_URL=https://<api-tunnel-host>
+```
+
+and `backend/.env`:
+
+```
+CORS_ORIGINS=https://<page-tunnel-host>
+```
+
+Restart the frontend afterwards: `NEXT_PUBLIC_*` is read at build time, not per
+request. The page switches to `wss://` on its own when served over https, since
+a plain `ws://` socket on an https page is blocked as mixed content.
+
+Nothing about this is automatic yet. The tunnel hostnames change on every run
+unless you have named tunnels, so this is a "when you want to demo it" path
+rather than a deploy.
 
 **WebSocket protocol.** Client sends `join` (`name`, `role`, optional
 `ticket`), then `move` (`uci`), `sit`, `stand`, `engine`, `clearSeat`,
@@ -153,10 +218,12 @@ the internet needs a tunnel or a deploy; nothing here assumes one.
 member after any change, or an `error` to the one client that asked for
 something it could not have.
 
-The `ticket` is a short-lived, WebSocket-only token from `POST /rooms/ticket`.
-The browser cannot read the httpOnly session cookie, and the socket does not go
-through the Next proxy, so the page trades one for the other rather than
-holding a session token in JavaScript.
+The `ticket` is a short-lived, WebSocket-only token from `POST /rooms/ticket`,
+and it is required: a join without one is closed with code 4401. The browser
+cannot read the httpOnly cookies, and the socket does not go through the Next
+proxy, so the page trades one for the other rather than holding a long-lived
+token in JavaScript. Tickets are issued for guests as well as accounts, which
+is what lets an invite work for anyone while every seat still has an owner.
 
 ## Hard mode
 

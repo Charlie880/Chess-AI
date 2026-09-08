@@ -43,7 +43,10 @@ class Seat:
     kind: str  # "human" | "engine"
     name: str
     member_id: str | None = None  # the connection sitting here
-    user_id: str | None = None  # set when that person is signed in
+    # Who owns the resulting game. "user" for an account, "guest" for a
+    # cookie-backed identity, None for an engine.
+    owner_kind: str | None = None
+    owner_id: str | None = None
     difficulty: str | None = None  # engines only
 
 
@@ -51,7 +54,8 @@ class Seat:
 class Member:
     id: str
     name: str
-    user_id: str | None
+    owner_kind: str  # "user" | "guest": everyone in a room has an identity
+    owner_id: str
     socket: object  # WebSocket; typed loosely to keep this module framework-free
 
 

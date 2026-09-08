@@ -28,12 +28,18 @@ export type RoomState = {
 export type Connection = "connecting" | "open" | "closed"
 
 /** The WebSocket runs against the API directly, because a Next route handler
- * cannot proxy one. Same host as the page by default, so a link that works for
- * you works for whoever you send it to. */
+ * cannot proxy one.
+ *
+ * Default: same hostname as the page, port 8000. That covers localhost and a
+ * machine on your own network. Behind a tunnel the page is served over https
+ * from a public hostname, so the scheme has to become wss (a ws:// socket on
+ * an https page is blocked as mixed content) and NEXT_PUBLIC_API_URL has to
+ * name wherever the API is tunnelled to. */
 function socketUrl(roomId: string): string {
   const configured = process.env.NEXT_PUBLIC_API_URL
   const base = configured || `${location.protocol}//${location.hostname}:8000`
-  return `${base.replace(/^http/, "ws")}/rooms/${encodeURIComponent(roomId)}/ws`
+  const scheme = base.startsWith("https") ? "wss" : "ws"
+  return `${base.replace(/^https?/, scheme)}/rooms/${encodeURIComponent(roomId)}/ws`
 }
 
 export function useRoom(roomId: string, name: string, role: "play" | "watch") {
@@ -47,14 +53,25 @@ export function useRoom(roomId: string, name: string, role: "play" | "watch") {
     let socket: WebSocket
 
     const start = async () => {
-      // Signed-in players get a short-lived ticket so the room can attach the
-      // game to their history. Guests simply have none, and still play.
-      let ticket: string | undefined
+      // A room refuses a join without a ticket, so this is not optional. It
+      // works for guests too: someone without an account is handed a guest
+      // identity here rather than being asked to sign up.
+      let ticket: string
       try {
         const response = await fetch("/api/rooms/ticket", { method: "POST" })
-        if (response.ok) ticket = (await response.json()).ticket
-      } catch {
-        // Not signed in, or the API is down. Either way, join as a guest.
+        const data = await response.json()
+        if (!response.ok || !data.ticket) throw new Error(data.error ?? "No identity")
+        ticket = data.ticket
+      } catch (err) {
+        if (!cancelled) {
+          setConnection("closed")
+          setError(
+            err instanceof Error && err.message !== "No identity"
+              ? err.message
+              : "Could not establish an identity for this room. Reload to try again.",
+          )
+        }
+        return
       }
       if (cancelled) return
 
@@ -77,6 +94,7 @@ export function useRoom(roomId: string, name: string, role: "play" | "watch") {
       socket.onclose = (event) => {
         setConnection("closed")
         if (event.code === 4404) setError("That room does not exist, or it has expired.")
+        if (event.code === 4401) setError("Your identity was not accepted. Reload to try again.")
       }
       socket.onerror = () => setConnection("closed")
     }

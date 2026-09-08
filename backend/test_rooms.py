@@ -4,10 +4,25 @@ cannot do what it is not allowed to do, so most of this is about refusals.
 Run: python test_rooms.py
 """
 
-from fastapi.testclient import TestClient
+import os
 
-import main
-import rooms
+# Rooms are tied to auth, so a ticket cannot be signed without this. Set it
+# before anything reads config, or every join is refused and the test blocks
+# forever waiting for a reply that will not come.
+os.environ.setdefault("JWT_SECRET", "test-only-secret")
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+import auth  # noqa: E402
+import main  # noqa: E402
+import rooms  # noqa: E402
+
+
+def guest_ticket(name: str) -> str:
+    """What the browser gets from /rooms/ticket after being handed a guest
+    identity. A room refuses anyone without one."""
+    guest_id, _ = auth.new_guest()
+    return auth.create_ws_ticket(auth.Identity(kind="guest", id=guest_id, name=name))
 
 
 def new_room(client) -> str:
@@ -17,7 +32,9 @@ def new_room(client) -> str:
 
 
 def join(socket, name, role):
-    socket.send_json({"type": "join", "name": name, "role": role})
+    socket.send_json(
+        {"type": "join", "name": name, "role": role, "ticket": guest_ticket(name)}
+    )
     return socket.receive_json()
 
 
@@ -196,6 +213,40 @@ def test_leaving_before_a_game_frees_the_seat():
                 black.receive_json()
         assert rooms.get_room(room_id).seats["w"] is not None
     print("test_leaving_before_a_game_frees_the_seat ok")
+
+
+def test_a_room_needs_an_identity():
+    """Multiplayer is tied to auth: a join without a valid ticket is closed,
+    and a session token cannot stand in for one."""
+    with TestClient(main.app) as client:
+        room_id = new_room(client)
+
+        for bad in (None, "nonsense", auth.create_token("507f1f77bcf86cd799439011")):
+            try:
+                with client.websocket_connect(f"/rooms/{room_id}/ws") as socket:
+                    socket.send_json({"type": "join", "name": "Sneak", "role": "play", "ticket": bad})
+                    socket.receive_json()
+                raise AssertionError(f"ticket {bad!r} should have been refused")
+            except AssertionError:
+                raise
+            except Exception:
+                pass  # closed, which is the point
+
+        assert rooms.get_room(room_id).seats["w"] is None, "no seat was handed out"
+    print("test_a_room_needs_an_identity ok")
+
+
+def test_a_signed_in_seat_carries_its_owner():
+    with TestClient(main.app) as client:
+        room_id = new_room(client)
+        user_id = "507f1f77bcf86cd799439011"
+        ticket = auth.create_ws_ticket(auth.Identity(kind="user", id=user_id, name="Ada"))
+        with client.websocket_connect(f"/rooms/{room_id}/ws") as socket:
+            socket.send_json({"type": "join", "name": "Ada", "role": "play", "ticket": ticket})
+            socket.receive_json()
+            seat = rooms.get_room(room_id).seats["w"]
+            assert seat.owner_kind == "user" and seat.owner_id == user_id
+    print("test_a_signed_in_seat_carries_its_owner ok")
 
 
 if __name__ == "__main__":

@@ -230,20 +230,18 @@ export default function ChessGame() {
     setError(null)
     bump()
 
-    if (user) {
-      try {
-        const response = await fetch("/api/games", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ difficulty, playerColor: color }),
-        })
-        if (response.ok) {
-          gameId.current = (await response.json()).id
-          setHistoryKey((k) => k + 1)
-        }
-      } catch {
-        // Play offline rather than blocking on the history service.
+    try {
+      const response = await fetch("/api/games", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ difficulty, playerColor: color }),
+      })
+      if (response.ok) {
+        gameId.current = (await response.json()).id
+        setHistoryKey((k) => k + 1)
       }
+    } catch {
+      // Play offline rather than blocking on the history service.
     }
 
     if (color === "b") void requestEngineMove()
@@ -457,12 +455,17 @@ export default function ChessGame() {
               setHistoryKey((k) => k + 1)
             }}
             onSignedOut={() => {
-              setUser(null)
+              // Signing out drops back to the guest identity, so re-ask rather
+              // than assuming there is nobody here.
               gameId.current = null
+              void fetch("/api/auth/me")
+                .then((r) => r.json())
+                .then((data) => setUser(data.user ?? null))
+                .then(() => setHistoryKey((k) => k + 1))
             }}
           />
 
-          {user && <GameHistory refreshKey={historyKey} />}
+          <GameHistory refreshKey={historyKey} />
         </aside>
       </main>
 

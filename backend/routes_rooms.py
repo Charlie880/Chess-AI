@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 import db
 import rooms
-from auth import create_ws_ticket, current_user, read_ws_ticket
+from auth import Identity, create_ws_ticket, current_identity, read_ws_ticket
 from rooms import COLORS, MoveRejected, Room, Seat
 
 log = logging.getLogger(__name__)
@@ -42,11 +42,12 @@ def room_exists(room_id: str):
 
 
 @router.post("/rooms/ticket")
-def issue_ticket(user: dict = Depends(current_user)):
+def issue_ticket(identity: Identity = Depends(current_identity)):
     """Exchanges a session for a short-lived token the browser can hand to the
     WebSocket, so a room knows who sat down without the page ever holding the
-    session token itself."""
-    return {"ticket": create_ws_ticket(str(user["_id"]))}
+    session token itself. Works for guests as well as accounts, which is what
+    lets an invite link work for anyone while every seat still has an owner."""
+    return {"ticket": create_ws_ticket(identity), "name": identity.name}
 
 
 # ------------------------------------------------------------------ helpers --
@@ -73,7 +74,7 @@ async def _save_finished_game(room: Room) -> None:
     now = datetime.now(timezone.utc)
     for color in COLORS:
         seat = room.seats[color]
-        if seat is None or seat.kind != "human" or not seat.user_id:
+        if seat is None or seat.kind != "human" or not seat.owner_id:
             continue
 
         other = room.seats["b" if color == "w" else "w"]
@@ -88,7 +89,11 @@ async def _save_finished_game(room: Room) -> None:
         try:
             await db.games().insert_one(
                 {
-                    "user_id": ObjectId(seat.user_id),
+                    **(
+                        {"user_id": ObjectId(seat.owner_id)}
+                        if seat.owner_kind == "user"
+                        else {"guest_id": seat.owner_id}
+                    ),
                     "mode": "room",
                     "room_id": room.id,
                     "opponent": other.name if other else "Nobody",
@@ -106,7 +111,7 @@ async def _save_finished_game(room: Room) -> None:
                 }
             )
         except Exception:
-            log.exception("Could not record room game for %s", seat.user_id)
+            log.exception("Could not record room game for %s", seat.owner_id)
 
 
 def _seat_human(room: Room, color: str, member) -> None:
@@ -117,7 +122,11 @@ def _seat_human(room: Room, color: str, member) -> None:
     if room.seat_of(member.id) is not None:
         raise MoveRejected("You are already playing")
     room.seats[color] = Seat(
-        kind="human", name=member.name, member_id=member.id, user_id=member.user_id
+        kind="human",
+        name=member.name,
+        member_id=member.id,
+        owner_kind=member.owner_kind,
+        owner_id=member.owner_id,
     )
     if room.both_seats_filled() and room.status == "waiting":
         room.status = "playing"
@@ -180,9 +189,22 @@ async def room_socket(websocket: WebSocket, room_id: str):
             await websocket.close(code=4400, reason="Expected a join")
             return
 
-        user_id = read_ws_ticket(opening.get("ticket"))
-        name = rooms.clean_name(opening.get("name"), fallback=f"Guest {member_id[:4]}")
-        member = rooms.Member(id=member_id, name=name, user_id=user_id, socket=websocket)
+        # A room is tied to identity: no valid ticket, no seat and no view.
+        # The page always has one, because a visitor without an account is
+        # given a guest identity before it ever opens the socket.
+        identity = read_ws_ticket(opening.get("ticket"))
+        if identity is None:
+            await websocket.close(code=4401, reason="Sign in or reload to get an identity")
+            return
+
+        name = rooms.clean_name(opening.get("name"), fallback=identity.name)
+        member = rooms.Member(
+            id=member_id,
+            name=name,
+            owner_kind=identity.kind,
+            owner_id=identity.id,
+            socket=websocket,
+        )
 
         async with room.lock:
             room.members[member_id] = member

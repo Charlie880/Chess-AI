@@ -3,7 +3,15 @@
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 
-export type User = { id: string; username: string; createdAt: string }
+// Everyone has one of these. A guest identity lives in a long-lived cookie,
+// so their games are recorded and their history is theirs; signing in is how
+// you carry that across browsers rather than how you start being counted.
+export type User = {
+  kind: "user" | "guest"
+  id: string
+  username: string
+  createdAt?: string
+}
 
 interface AuthPanelProps {
   user: User | null
@@ -45,7 +53,7 @@ export default function AuthPanel({ user, onAuthenticated, onSignedOut }: AuthPa
     onSignedOut()
   }
 
-  if (user) {
+  if (user?.kind === "user") {
     return (
       <div className="flex items-center justify-between gap-3 px-4 py-2.5">
         <span className="truncate text-sm text-graphite">
@@ -120,9 +128,9 @@ export default function AuthPanel({ user, onAuthenticated, onSignedOut }: AuthPa
         </button>
 
         <p className="text-sm leading-snug text-graphite">
-          {mode === "login"
-            ? "Sign in to keep a record of every game you play."
-            : "Your games and results are saved to this account."}
+          {user
+            ? `Playing as ${user.username}. Your games are already saved to this browser; an account carries them to your other devices.`
+            : "An account carries your games across devices."}
         </p>
       </div>
     </form>

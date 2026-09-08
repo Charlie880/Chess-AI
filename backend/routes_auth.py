@@ -9,8 +9,11 @@ from pymongo.errors import DuplicateKeyError
 
 import db
 from auth import (
+    Identity,
     create_token,
-    current_user,
+    current_identity,
+    new_guest,
+    public_identity,
     hash_password,
     public_user,
     require_persistence,
@@ -51,7 +54,10 @@ async def register(body: Credentials):
         raise HTTPException(409, "That username is taken")
 
     document["_id"] = result.inserted_id
-    return {"token": create_token(str(result.inserted_id)), "user": public_user(document)}
+    return {
+        "token": create_token(str(result.inserted_id), kind="user"),
+        "user": {"kind": "user", **public_user(document)},
+    }
 
 
 @router.post("/login")
@@ -67,9 +73,25 @@ async def login(body: Credentials):
     if not await verify_password(body.password, user["password_hash"]):
         raise HTTPException(401, "Incorrect username or password")
 
-    return {"token": create_token(str(user["_id"])), "user": public_user(user)}
+    return {
+        "token": create_token(str(user["_id"]), kind="user"),
+        "user": {"kind": "user", **public_user(user)},
+    }
+
+
+@router.post("/guest")
+def guest():
+    """Mint an identity for someone who has not signed up. Rooms are tied to
+    auth, and this is what lets "anyone with the link" still mean somebody:
+    the id lives in a long-lived cookie, so their games keep accruing to them
+    across visits without an account."""
+    guest_id, name = new_guest()
+    return {
+        "token": create_token(guest_id, kind="guest"),
+        "user": {"kind": "guest", "id": guest_id, "username": name},
+    }
 
 
 @router.get("/me")
-async def me(user: dict = Depends(current_user)):
-    return public_user(user)
+async def me(identity: Identity = Depends(current_identity)):
+    return public_identity(identity)

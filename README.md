@@ -1,185 +1,99 @@
-# ♟️ AI Chess Bot
+# Chess AI
 
-A chess-playing web app with multiple difficulty levels, powered by:
-- **Stockfish** (Hard mode)
-- **Custom Minimax Engine** (Normal mode)
-- **Lightweight CNN Model** (Easy mode)
+Play chess in the browser against three engines. Next.js UI, FastAPI backend.
 
-Frontend built with **Next.js** + **React**.  
-Backend powered by **FastAPI** with pluggable engines.
+| Difficulty | Engine | Notes |
+|---|---|---|
+| Easy | CNN | Keras model, scores from-square and to-square, filtered to legal moves |
+| Normal | Minimax | Depth 2, alpha-beta, material eval, mate-aware |
+| Hard | Stockfish | Local binary → Lichess cloud eval → minimax depth 3 |
 
----
+## Layout
 
-## 🚀 Features
+```
+backend/          FastAPI service
+  main.py           POST /move, GET /health
+  engines/          cnn_engine, minmax_engine, stockfish_engine
+  test_engines.py   search correctness checks
+  *.keras           CNN weights
+frontend/         Next.js 14 app (the UI)
+  app/page.tsx      game state, engine calls
+  app/api/engine/   server-side proxy to the backend
+  components/       board, move log, captured pieces, promotion dialog
+model/            CNN training and evaluation scripts + dataset (Git LFS)
+legacy/catmeme/   an earlier standalone UI, not wired to anything
+```
 
-- **Multiple difficulty levels**
-  - Easy → CNN-based move prediction
-  - Normal → Depth-limited Minimax search
-  - Hard → Stockfish (via Lichess Cloud Evaluation or local binary)
-- **Full chess rule enforcement** (legal move checking, checkmate/stalemate handling)
-- **Live move logging** in the UI
-- **Fast API responses** suitable for real-time play
-- **Pluggable engine system** for easy swapping/adding AI backends
+## Setup
 
----
+Backend:
 
-## 🏗 Architecture
-
-frontend/ → Next.js app (chessboard UI, move logging, difficulty selector)
-├─ app/page.tsx
-├─ components/ChessBoard.tsx
-├─ components/MoveLog.tsx
-├─ components/ModeSelector.tsx
-└─ lib/api.ts
-
-backend/ → FastAPI app
-├─ main.py → API routes
-├─ engines/
-│ ├─ stockfish_engine.py
-│ ├─ minmax_engine.py
-│ └─ cnn_engine.py
-├─ models/ → ML models (e.g. novice_chess_model.keras)
-└─ requirements.txt
-
-yaml
-Copy
-Edit
-
----
-
-## ⚙️ Installation & Setup
-
-### 1️⃣ Clone the repo
 ```bash
-git clone https://github.com/your-username/chess-bot.git
-cd chess-bot
-2️⃣ Backend setup
-bash
-Copy
-Edit
 cd backend
 python -m venv venv
-source venv/bin/activate  # or venv\Scripts\activate on Windows
-
+venv\Scripts\activate        # source venv/bin/activate on macOS/Linux
 pip install -r requirements.txt
-Make sure you have Python 3.9+ installed.
-
-3️⃣ Frontend setup
-bash
-Copy
-Edit
-cd ../frontend
-npm install
-4️⃣ Model file
-Place your trained CNN model file here:
-
-bash
-Copy
-Edit
-backend/models/novice_chess_model.keras
-▶️ Running the App
-Start backend
-bash
-Copy
-Edit
-cd backend
 uvicorn main:app --reload --port 8000
-Start frontend
-bash
-Copy
-Edit
+```
+
+Frontend, in a second terminal:
+
+```bash
 cd frontend
+npm install
 npm run dev
-Frontend runs at http://localhost:3000
-Backend API runs at http://localhost:8000
+```
 
-📡 API Documentation
+UI at http://localhost:3000, API at http://localhost:8000.
+
+`BACKEND_URL` overrides where the frontend proxies to (default `http://127.0.0.1:8000`).
+
+## Hard mode
+
+Lichess cloud eval is a *cache*, not an engine — it only answers for positions
+someone already analysed, so it returns nothing for most positions past the
+opening. For real Stockfish strength, install the binary and either put it on
+`PATH` or set `STOCKFISH_PATH`:
+
+```bash
+export STOCKFISH_PATH=/usr/local/bin/stockfish
+```
+
+Without it, Hard falls back to minimax depth 3 rather than failing the request.
+
+## API
+
+```
 POST /move
-Request body:
+{ "fen": "<position>", "difficulty": "easy" | "normal" | "hard" }
 
-json
-Copy
-Edit
+200
 {
-  "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-  "difficulty": "easy"
+  "move": "e2e4", "from": "e2", "to": "e4", "promotion": null,
+  "san": "e4", "fen": "<position after>",
+  "gameOver": false, "result": null
 }
-Difficulty options:
+```
 
-"easy" → CNN engine
+`400` invalid FEN, unknown difficulty, or a finished game. `502` engine failure.
 
-"normal" → Minimax engine
+## Tests
 
-"hard" → Stockfish engine
+```bash
+cd backend && python test_engines.py
+```
 
-Response:
+Covers mate detection, mate avoidance, material capture, and terminal scoring.
 
-json
-Copy
-Edit
-{
-  "move": "e2e4",
-  "from": "e2",
-  "to": "e4",
-  "san": "e4",
-  "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
-}
-🧠 Engine Details
-Easy Mode (CNN Engine)
-Model input: 8×8×13 tensor
+## CNN model status
 
-Channels: 12 piece types + 1 turn indicator
+The shipped weights are **not trained to a useful standard**. From
+`model/metrics.txt`: 5.6% complete-move accuracy, trained on 10,000 of the
+8,155,187 available positions for 19 seconds, 88,704 parameters. Easy mode
+produces legal moves because `cnn_engine` filters to legal moves, not because
+the network is picking good ones. Retrain via `model/model_training.py` with a
+larger sample before treating Easy as a real engine.
 
-Output: Two probability distributions (from_square, to_square)
+## License
 
-Picks highest scoring legal move
-
-Normal Mode (Minimax Engine)
-Standard minimax search with evaluation function
-
-Adjustable depth (default: 2)
-
-Hard Mode (Stockfish Engine)
-Integrates Stockfish via Python chess library
-
-Supports depth tuning or skill level settings
-
-📊 Model Training (CNN)
-If you want to retrain the CNN:
-
-Prepare PGN/FEN dataset
-
-Convert games to (board_tensor, move) pairs
-
-Train with Keras:
-
-python
-Copy
-Edit
-model.fit(train_ds, epochs=30, validation_data=val_ds)
-Save:
-
-python
-Copy
-Edit
-model.save("models/novice_chess_model.keras")
-🛠 Development Tips
-Keep the model lightweight for faster inference in Easy mode
-
-CNN predictions are filtered through legal move checking, so even bad models won’t break the game
-
-You can hot-swap engines by editing engines/ and not touching main.py
-
-If running on limited hardware, disable Stockfish and use Minimax only
-
-📜 License
-MIT License — free to use and modify.
-
-🙌 Credits
-python-chess for move generation and rules
-
-Stockfish for strong chess AI
-
-TensorFlow/Keras for CNN training
-
-Next.js + React for the frontend
+MIT

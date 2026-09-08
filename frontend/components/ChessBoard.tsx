@@ -1,131 +1,137 @@
 "use client"
 
-import { useState } from "react"
+import type { CSSProperties } from "react"
 import { cn } from "@/lib/utils"
+import { FILES, PIECE_GLYPHS, RANKS, type PieceColor } from "@/lib/chess-ui"
+
+type Piece = { type: string; color: PieceColor } | null
 
 interface ChessBoardProps {
-  position: string
-  onMove: (from: string, to: string) => boolean
-  isPlayerTurn: boolean
-  lastMove?: { from: string; to: string } | null
+  /** 8 ranks from rank 8 down to rank 1, as returned by chess.js `board()`. */
+  board: Piece[][]
+  orientation: PieceColor
+  selected: string | null
+  legalTargets: Set<string>
+  lastMove: { from: string; to: string } | null
+  checkSquare: string | null
+  interactive: boolean
+  onSquareClick: (square: string) => void
 }
 
-const PIECE_SYMBOLS: { [key: string]: string } = {
-  K: "♔",
-  Q: "♕",
-  R: "♖",
-  B: "♗",
-  N: "♘",
-  P: "♙",
-  k: "♚",
-  q: "♛",
-  r: "♜",
-  b: "♝",
-  n: "♞",
-  p: "♟",
-}
+// One expression owns the board's size, and everything inside is a fraction of
+// it. Sizing glyphs off `vw` instead makes them overflow their square whenever
+// the viewport is wide but short, because then it is the height that caps the
+// board and the glyph never hears about it.
+const BOARD_SIZE = "min(90vw, calc(100vh - 14rem))"
+const SQUARE = `calc(${BOARD_SIZE} / 8)`
 
-const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"]
-const RANKS = ["8", "7", "6", "5", "4", "3", "2", "1"]
+export default function ChessBoard({
+  board,
+  orientation,
+  selected,
+  legalTargets,
+  lastMove,
+  checkSquare,
+  interactive,
+  onSquareClick,
+}: ChessBoardProps) {
+  const files = orientation === "w" ? FILES : [...FILES].reverse()
+  const ranks = orientation === "w" ? RANKS : [...RANKS].reverse()
 
-export default function ChessBoard({ position, onMove, isPlayerTurn, lastMove }: ChessBoardProps) {
-  const [selectedSquare, setSelectedSquare] = useState<string | null>(null)
-  const [hoveredSquare, setHoveredSquare] = useState<string | null>(null)
-
-  // Parse FEN position to get piece placement
-  const parseFEN = (fen: string) => {
-    const [piecePlacement] = fen.split(" ")
-    const board: { [key: string]: string } = {}
-
-    const ranks = piecePlacement.split("/")
-    ranks.forEach((rank, rankIndex) => {
-      let fileIndex = 0
-      for (const char of rank) {
-        if (isNaN(Number.parseInt(char))) {
-          const square = FILES[fileIndex] + RANKS[rankIndex]
-          board[square] = char
-          fileIndex++
-        } else {
-          fileIndex += Number.parseInt(char)
-        }
-      }
-    })
-
-    return board
-  }
-
-  const board = parseFEN(position)
-
-  const handleSquareClick = (square: string) => {
-    if (!isPlayerTurn) return
-
-    if (selectedSquare === square) {
-      setSelectedSquare(null)
-      return
-    }
-
-    if (selectedSquare) {
-      const moveSuccessful = onMove(selectedSquare, square)
-      setSelectedSquare(null)
-    } else if (board[square]) {
-      // Only select squares with pieces
-      const piece = board[square]
-      const isWhitePiece = piece === piece.toUpperCase()
-      // For now, assume player is always white
-      if (isWhitePiece) {
-        setSelectedSquare(square)
-      }
-    }
-  }
-
-  const isLightSquare = (file: string, rank: string) => {
-    const fileIndex = FILES.indexOf(file)
-    const rankIndex = RANKS.indexOf(rank)
-    return (fileIndex + rankIndex) % 2 === 0
-  }
+  const coordStyle: CSSProperties = { fontSize: `calc(${SQUARE} * 0.2)` }
 
   return (
-    <div className="inline-block border-2 border-border rounded-lg overflow-hidden shadow-lg">
-      <div className="grid grid-cols-8 gap-0">
-        {RANKS.map((rank) =>
-          FILES.map((file) => {
-            const square = file + rank
-            const piece = board[square]
-            const isLight = isLightSquare(file, rank)
-            const isSelected = selectedSquare === square
-            const isHovered = hoveredSquare === square
-            const isLastMoveSquare = lastMove && (lastMove.from === square || lastMove.to === square)
+    <div className="select-none" style={{ width: BOARD_SIZE, maxWidth: "100%" }}>
+      <div
+        // Rows are 1fr of a square container, so a square stays square no matter
+        // what a glyph's line box wants. Letting the children set their own
+        // height via aspect-ratio lets one tall glyph stretch its whole row.
+        className="grid aspect-square w-full grid-cols-8 [grid-template-rows:repeat(8,1fr)] overflow-hidden rounded-sm border-4 border-[#3d2b1f] shadow-2xl"
+        style={{ fontSize: `calc(${SQUARE} * 0.74)` }}
+      >
+        {ranks.map((rank, rowIdx) =>
+          files.map((file, colIdx) => {
+            const square = `${file}${rank}`
+            // `board` is always stored white-side-up; index into it by the real
+            // rank/file so flipping the view never flips the position.
+            const piece = board[RANKS.indexOf(rank)][FILES.indexOf(file)]
+
+            const isLight = (FILES.indexOf(file) + RANKS.indexOf(rank)) % 2 === 0
+            const isSelected = selected === square
+            const isTarget = legalTargets.has(square)
+            const isCapture = isTarget && piece !== null
+            const isLast = lastMove?.from === square || lastMove?.to === square
+            const inCheck = checkSquare === square
+
+            // Coordinates ride in the margins of the edge squares, the way a
+            // printed board labels them - no extra gutter row or column.
+            const showFile = rowIdx === 7
+            const showRank = colIdx === 0
 
             return (
-              <div
+              <button
                 key={square}
+                type="button"
+                onClick={() => onSquareClick(square)}
+                disabled={!interactive}
+                aria-label={`${square}${piece ? `, ${piece.color === "w" ? "white" : "black"} ${piece.type}` : ", empty"}`}
                 className={cn(
-                  "w-16 h-16 flex items-center justify-center text-4xl cursor-pointer relative transition-all duration-200",
-                  isLight ? "bg-amber-100" : "bg-amber-800",
-                  isSelected && "ring-4 ring-blue-500 ring-inset",
-                  isLastMoveSquare && "bg-yellow-400 bg-opacity-60",
-                  isHovered && "brightness-110",
-                  !isPlayerTurn && "cursor-not-allowed opacity-75",
+                  "relative flex min-h-0 min-w-0 items-center justify-center overflow-hidden",
+                  isLight ? "bg-[#eeeed2]" : "bg-[#769656]",
+                  (isLast || isSelected) && (isLight ? "bg-[#f6f669]" : "bg-[#baca2b]"),
+                  inCheck && "bg-[radial-gradient(circle,#ff5252_0%,#c62828_65%,transparent_78%)]",
+                  interactive ? "cursor-pointer" : "cursor-default",
                 )}
-                onClick={() => handleSquareClick(square)}
-                onMouseEnter={() => setHoveredSquare(square)}
-                onMouseLeave={() => setHoveredSquare(null)}
               >
-                {piece && (
+                {showFile && (
                   <span
                     className={cn(
-                      "select-none transition-transform duration-200",
-                      isSelected && "scale-110",
-                      piece === piece.toUpperCase() ? "text-white drop-shadow-lg" : "text-black",
+                      "pointer-events-none absolute bottom-0 right-0.5 font-bold leading-none",
+                      isLight ? "text-[#769656]" : "text-[#eeeed2]",
                     )}
+                    style={coordStyle}
                   >
-                    {PIECE_SYMBOLS[piece]}
+                    {file}
+                  </span>
+                )}
+                {showRank && (
+                  <span
+                    className={cn(
+                      "pointer-events-none absolute left-0.5 top-0 font-bold leading-none",
+                      isLight ? "text-[#769656]" : "text-[#eeeed2]",
+                    )}
+                    style={coordStyle}
+                  >
+                    {rank}
                   </span>
                 )}
 
-                {/* Square coordinates for debugging */}
-                <span className="absolute bottom-0 right-0 text-xs opacity-30 pointer-events-none">{square}</span>
-              </div>
+                {piece && (
+                  <span
+                    className={cn(
+                      "pointer-events-none leading-none",
+                      piece.color === "w" ? "text-white" : "text-[#181818]",
+                    )}
+                    style={{
+                      // A hard contrasting outline is what separates the two
+                      // sides when both are drawn from the same solid glyph.
+                      textShadow:
+                        piece.color === "w"
+                          ? "0 0 1px #000, 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000"
+                          : "0 0 1px rgba(255,255,255,.35), 1px 1px 0 rgba(0,0,0,.4)",
+                    }}
+                  >
+                    {PIECE_GLYPHS[piece.type]}
+                  </span>
+                )}
+
+                {isTarget && !isCapture && (
+                  <span className="pointer-events-none absolute h-[28%] w-[28%] rounded-full bg-black/25" />
+                )}
+                {isCapture && (
+                  <span className="pointer-events-none absolute inset-[6%] rounded-full border-[0.14em] border-black/25" />
+                )}
+              </button>
             )
           }),
         )}

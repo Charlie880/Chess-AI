@@ -1,50 +1,53 @@
 "use client"
 
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { cn } from "@/lib/utils"
+
+export type Difficulty = "easy" | "normal" | "hard"
 
 interface ModeSelectorProps {
-  difficulty: "easy" | "normal" | "hard"
-  onDifficultyChange: (difficulty: "easy" | "normal" | "hard") => void
+  difficulty: Difficulty
+  onDifficultyChange: (difficulty: Difficulty) => void
   disabled?: boolean
 }
 
-const DIFFICULTY_INFO = {
-  easy: { label: "Easy", description: "CNN Engine - Good for beginners", color: "bg-green-500" },
-  normal: { label: "Normal", description: "MinMax Engine - Balanced gameplay", color: "bg-yellow-500" },
-  hard: { label: "Hard", description: "Stockfish Engine - Master level", color: "bg-red-500" },
-}
+const LEVELS: { id: Difficulty; label: string; engine: string }[] = [
+  { id: "easy", label: "Easy", engine: "CNN" },
+  { id: "normal", label: "Normal", engine: "Minimax d2" },
+  { id: "hard", label: "Hard", engine: "Stockfish" },
+]
 
 export default function ModeSelector({ difficulty, onDifficultyChange, disabled }: ModeSelectorProps) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">Difficulty Level</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="flex gap-2">
-          {(Object.keys(DIFFICULTY_INFO) as Array<keyof typeof DIFFICULTY_INFO>).map((level) => {
-            const info = DIFFICULTY_INFO[level]
-            const isSelected = difficulty === level
-
-            return (
-              <Button
-                key={level}
-                variant={isSelected ? "default" : "outline"}
-                size="sm"
-                onClick={() => onDifficultyChange(level)}
-                disabled={disabled}
-                className="flex-1"
-              >
-                <div className={`w-2 h-2 rounded-full mr-2 ${info.color}`} />
-                {info.label}
-              </Button>
-            )
-          })}
-        </div>
-
-        <p className="text-sm text-muted-foreground mt-2">{DIFFICULTY_INFO[difficulty].description}</p>
-      </CardContent>
-    </Card>
+    <div className="rounded-md border border-neutral-700 bg-neutral-900">
+      <div className="border-b border-neutral-700 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+        Engine
+      </div>
+      <div className="flex p-2">
+        {LEVELS.map((level) => (
+          <button
+            key={level.id}
+            type="button"
+            onClick={() => onDifficultyChange(level.id)}
+            disabled={disabled}
+            className={cn(
+              "flex-1 rounded px-2 py-2 text-sm transition-colors disabled:opacity-40",
+              difficulty === level.id
+                ? "bg-neutral-100 font-semibold text-neutral-900"
+                : "text-neutral-300 hover:bg-neutral-800",
+            )}
+          >
+            <span className="block">{level.label}</span>
+            <span
+              className={cn(
+                "block text-[10px]",
+                difficulty === level.id ? "text-neutral-600" : "text-neutral-500",
+              )}
+            >
+              {level.engine}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }

@@ -10,6 +10,10 @@ import os
 # before anything reads config, or every join is refused and the test blocks
 # forever waiting for a reply that will not come.
 os.environ.setdefault("JWT_SECRET", "test-only-secret")
+# And keep the suite off the network: backend/.env may name a real cluster, and
+# every TestClient runs the lifespan, so each test would pay a DNS round trip
+# (or a full server-selection timeout) for a database these tests never use.
+os.environ.setdefault("MONGO_URI", "")
 
 from fastapi.testclient import TestClient  # noqa: E402
 

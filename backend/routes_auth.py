@@ -25,6 +25,10 @@ from auth import (
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 USERNAME_RE = re.compile(r"^[a-zA-Z0-9_-]{3,24}$")
+# Deliberately loose. This is a "did you fumble the keyboard" check, not an
+# attempt to out-parse RFC 5322, and nothing yet depends on the address being
+# deliverable - there is no verification mail and no reset flow.
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s.]+\.[^@\s]+$")
 
 
 class Credentials(BaseModel):
@@ -32,16 +36,29 @@ class Credentials(BaseModel):
     password: str = Field(min_length=1, max_length=256)
 
 
+class Registration(Credentials):
+    """The sign-up screen collects an address, so the account stores one rather
+    than the form quietly throwing it away. Optional, and not unique: nothing
+    reads it yet."""
+
+    email: str | None = Field(default=None, max_length=254)
+
+
 @router.post("/register")
-async def register(body: Credentials):
+async def register(body: Registration):
     require_persistence()
     username = body.username.strip()
     if not USERNAME_RE.match(username):
         raise HTTPException(400, "Username must be 3-24 characters: letters, digits, _ or -")
     validate_password(body.password)
 
+    email = (body.email or "").strip().lower() or None
+    if email and not EMAIL_RE.match(email):
+        raise HTTPException(400, "That does not look like an email address")
+
     document = {
         "username": username,
+        "email": email,
         # Uniqueness and lookup both run on the folded form, so Alice and alice
         # are the same account. `username` keeps the casing they typed.
         "username_lower": username.lower(),

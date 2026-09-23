@@ -26,7 +26,7 @@ const cinzel = Cinzel({
 })
 
 export const metadata: Metadata = {
-  title: "Mess · Game",
+  title: "Mess",
   description: "Play chess against a CNN, a minimax search, or Stockfish.",
 }
 

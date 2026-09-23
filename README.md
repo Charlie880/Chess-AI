@@ -25,7 +25,10 @@ backend/          FastAPI service
   test_engines.py   search correctness checks
   *.keras           CNN weights
 frontend/         Next.js 14 app (the UI)
-  app/page.tsx      game state, engine calls, history sync
+  app/page.tsx      splash
+  app/signin/       sign in
+  app/register/     create account
+  app/play/         the game: state, engine calls, history sync
   app/api/          server-side proxies: engine, auth, games
   lib/server-api.ts backend calls + the httpOnly token cookie
   components/       board, move log, captured pieces, auth, history, rooms
@@ -55,6 +58,11 @@ npm run dev
 ```
 
 UI at http://localhost:3000, API at http://localhost:8000.
+
+The screens follow the design's own flow: `/` is the splash, which leads to
+`/signin`, which leads to `/play` either by signing in or as a guest.
+`/register` creates an account. To land straight on the board instead, point
+`app/page.tsx` at the game rather than the splash.
 
 `BACKEND_URL` overrides where the frontend proxies to (default `http://127.0.0.1:8000`).
 

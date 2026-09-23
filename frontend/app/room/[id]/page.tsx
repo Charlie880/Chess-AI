@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import { useParams } from "next/navigation"
 
 import RoomBoard from "@/components/RoomBoard"
@@ -78,8 +79,11 @@ export default function RoomPage() {
           </form>
 
           <p className="mt-6 text-[13px] leading-[1.5] text-mute">
-            Your games are saved to this browser. Sign in from the home page to keep them across
-            devices.
+            Your games are saved to this browser.{" "}
+            <Link href="/signin" className="font-bold text-goldink hover:text-ink">
+              Sign in
+            </Link>{" "}
+            to keep them across devices.
           </p>
         </section>
       </main>

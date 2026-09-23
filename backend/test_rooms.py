@@ -42,10 +42,28 @@ def join(socket, name, role):
     return socket.receive_json()
 
 
-def drain(socket, count):
-    """Every action broadcasts to every member, so a socket sees its own
-    updates and the other player's. Read exactly `count` of them."""
-    return [socket.receive_json() for _ in range(count)]
+# Every action broadcasts to every member, and a member that disconnects
+# broadcasts from its own task - so how many messages are queued for a given
+# socket at a given moment is a race. Counting them made this suite hang
+# intermittently. Read until the message the test actually cares about
+# arrives instead, skipping any state that happens to be in flight.
+MAX_SKIPPED = 12
+
+
+def expect_error(socket) -> str:
+    for _ in range(MAX_SKIPPED):
+        message = socket.receive_json()
+        if message.get("type") == "error":
+            return message["message"]
+    raise AssertionError("expected a refusal, saw only state broadcasts")
+
+
+def expect_state(socket, until=lambda state: True) -> dict:
+    for _ in range(MAX_SKIPPED):
+        message = socket.receive_json()
+        if message.get("type") == "state" and until(message):
+            return message
+    raise AssertionError("expected a matching state broadcast")
 
 
 def test_two_players_and_a_spectator():
@@ -59,21 +77,18 @@ def test_two_players_and_a_spectator():
 
             with client.websocket_connect(f"/rooms/{room_id}/ws") as black:
                 join(black, "Linus", "play")
-                white.receive_json()  # white is told black sat down
+                expect_state(white, lambda s: s["seats"]["b"] is not None)
 
                 with client.websocket_connect(f"/rooms/{room_id}/ws") as watcher:
                     state = join(watcher, "Grace", "watch")
                     assert state["you"]["color"] is None
                     assert "Grace" in state["watchers"]
                     assert state["status"] == "playing"
-                    drain(white, 1)
-                    drain(black, 1)
 
                     white.send_json({"type": "move", "uci": "e2e4"})
                     for socket in (white, black, watcher):
-                        state = socket.receive_json()
-                        assert state["moves"] == ["e4"], "spectators see the game too"
-                        assert state["turn"] == "b"
+                        state = expect_state(socket, lambda s: s["moves"] == ["e4"])
+                        assert state["turn"] == "b", "spectators see the game too"
     print("test_two_players_and_a_spectator ok")
 
 
@@ -84,46 +99,39 @@ def test_server_refuses_what_the_client_should_not_do():
             join(white, "Ada", "play")
             with client.websocket_connect(f"/rooms/{room_id}/ws") as black:
                 join(black, "Linus", "play")
-                white.receive_json()
 
                 # Out of turn.
                 black.send_json({"type": "move", "uci": "e7e5"})
-                assert black.receive_json()["message"] == "Not your turn"
+                assert expect_error(black) == "Not your turn"
 
                 # Illegal move.
                 white.send_json({"type": "move", "uci": "e2e5"})
-                assert white.receive_json()["message"] == "That move is not legal"
+                assert expect_error(white) == "That move is not legal"
 
                 # Not a move at all.
                 white.send_json({"type": "move", "uci": "hello"})
-                assert white.receive_json()["message"] == "That is not a move"
+                assert expect_error(white) == "That is not a move"
 
                 # Moving the other player's pieces: white sends a black move.
                 white.send_json({"type": "move", "uci": "e7e5"})
-                assert white.receive_json()["message"] == "That move is not legal"
+                assert expect_error(white) == "That move is not legal"
 
-                # A watcher cannot move, and cannot take an occupied seat.
+                # A watcher cannot move, resign, or take an occupied seat.
                 with client.websocket_connect(f"/rooms/{room_id}/ws") as watcher:
                     join(watcher, "Grace", "watch")
-                    drain(white, 1)  # both players see Grace arrive
-                    drain(black, 1)
 
                     watcher.send_json({"type": "move", "uci": "e2e4"})
-                    assert watcher.receive_json()["message"] == "You are watching this game"
+                    assert expect_error(watcher) == "You are watching this game"
 
                     watcher.send_json({"type": "sit", "color": "w"})
-                    assert watcher.receive_json()["message"] == "That seat is taken"
+                    assert expect_error(watcher) == "That seat is taken"
 
                     watcher.send_json({"type": "resign"})
-                    assert watcher.receive_json()["message"] == "You are watching this game"
-
-                # Grace leaving is itself a broadcast; read it before going on.
-                drain(white, 1)
-                drain(black, 1)
+                    assert expect_error(watcher) == "You are watching this game"
 
                 # A seated player cannot also take the other seat.
                 black.send_json({"type": "sit", "color": "b"})
-                assert black.receive_json()["message"] == "That seat is taken"
+                assert expect_error(black) == "That seat is taken"
     print("test_server_refuses_what_the_client_should_not_do ok")
 
 
@@ -161,10 +169,10 @@ def test_checkmate_and_resignation_finish_the_room():
                     (white, "d1h5"), (black, "g8f6"),
                     (white, "h5f7"),
                 ]
-                for socket, uci in line:
+                for index, (socket, uci) in enumerate(line):
                     socket.send_json({"type": "move", "uci": uci})
-                    state = socket.receive_json()
-                    (black if socket is white else white).receive_json()
+                    played = index + 1
+                    state = expect_state(socket, lambda s: len(s["moves"]) == played)
 
                 assert state["status"] == "finished", state["status"]
                 assert state["result"] == "1-0"
@@ -172,17 +180,15 @@ def test_checkmate_and_resignation_finish_the_room():
 
                 # A finished game takes no more moves.
                 black.send_json({"type": "move", "uci": "e8e7"})
-                assert black.receive_json()["message"] == "This game is over"
+                assert expect_error(black) == "This game is over"
 
         room_id = new_room(client)
         with client.websocket_connect(f"/rooms/{room_id}/ws") as white:
             join(white, "Ada", "play")
             with client.websocket_connect(f"/rooms/{room_id}/ws") as black:
                 join(black, "Linus", "play")
-                white.receive_json()
                 white.send_json({"type": "resign"})
-                state = white.receive_json()
-                black.receive_json()
+                state = expect_state(white, lambda s: s["status"] == "finished")
                 assert state["result"] == "0-1" and state["termination"] == "resigned"
     print("test_checkmate_and_resignation_finish_the_room ok")
 
@@ -211,10 +217,8 @@ def test_leaving_before_a_game_frees_the_seat():
             join(white, "Ada", "play")
             with client.websocket_connect(f"/rooms/{room_id}/ws") as black:
                 join(black, "Linus", "play")
-                white.receive_json()
                 white.send_json({"type": "move", "uci": "e2e4"})
-                white.receive_json()
-                black.receive_json()
+                expect_state(white, lambda s: s["moves"] == ["e4"])
         assert rooms.get_room(room_id).seats["w"] is not None
     print("test_leaving_before_a_game_frees_the_seat ok")
 

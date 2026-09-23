@@ -72,8 +72,14 @@ export default function ChessGame() {
   const bump = () => setVersion((v) => v + 1)
 
   const [difficulty, setDifficulty] = useState<Difficulty>("normal")
+  // `playerColor` is the colour of the game on the board. `pendingColor` is
+  // what the picker shows, which can differ only once a game has finished and
+  // you are choosing sides for the next one.
   const [playerColor, setPlayerColor] = useState<PieceColor>("w")
-  const [nextColor, setNextColor] = useState<PieceColor>("w")
+  const [pendingColor, setPendingColor] = useState<PieceColor>("w")
+  // Async callbacks need the colour of the game they belong to, and setState
+  // has not flushed by the time the opening engine move fires.
+  const colorRef = useRef<PieceColor>("w")
   const [orientation, setOrientation] = useState<PieceColor>("w")
   const [selected, setSelected] = useState<string | null>(null)
   const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null)
@@ -92,6 +98,11 @@ export default function ChessGame() {
   // Not state: the persisted game's id is read inside async callbacks that
   // would otherwise close over a stale value.
   const gameId = useRef<string | null>(null)
+  // The player's move and the engine's reply both persist, and the second can
+  // start before the first create resolves. Without holding the in-flight
+  // promise, each would create its own record and every game would appear
+  // twice in history.
+  const creating = useRef<Promise<string | null> | null>(null)
   const router = useRouter()
   const [openingRoom, setOpeningRoom] = useState(false)
 
@@ -112,12 +123,37 @@ export default function ChessGame() {
   const finished = resigned || state.status === "finished"
   const isPlayerTurn = turn === playerColor && !thinking && !finished
 
-  /** Write the whole game state. A full replace rather than an append, so a
-   * dropped or duplicated request cannot corrupt the stored move list. */
-  const syncGame = useCallback(
+  /** Write the whole game state, creating the record on the first move.
+   *
+   * Creating it lazily matters twice over: choosing a colour or an engine
+   * before you move costs nothing, and opening the page without playing leaves
+   * no empty "Playing" row in your history.
+   *
+   * A full replace rather than an append, so a dropped or duplicated request
+   * cannot corrupt the stored move list. */
+  const persist = useCallback(
     async (override?: Partial<GameState>) => {
-      if (!gameId.current) return
-      const current = { ...describeGame(game.current, playerColor), ...override }
+      if (!gameId.current) {
+        creating.current ??= (async () => {
+          try {
+            const created = await fetch("/api/games", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ difficulty, playerColor: colorRef.current }),
+            })
+            if (!created.ok) return null
+            const { id } = await created.json()
+            gameId.current = id
+            setHistoryKey((k) => k + 1)
+            return id as string
+          } catch {
+            return null // play offline rather than blocking on history
+          }
+        })()
+        if (!(await creating.current)) return
+      }
+
+      const current = { ...describeGame(game.current, colorRef.current), ...override }
       try {
         await fetch(`/api/games/${gameId.current}`, {
           method: "PUT",
@@ -140,7 +176,7 @@ export default function ChessGame() {
         // interrupt the game in progress.
       }
     },
-    [playerColor],
+    [difficulty],
   )
 
   const recordCapture = (move: Move) => {
@@ -173,13 +209,13 @@ export default function ChessGame() {
       setLastMove({ from: move.from, to: move.to })
       if (data.engine) setActualEngine(data.engine as Difficulty)
       bump()
-      void syncGame()
+      void persist()
     } catch (err) {
       setError(err instanceof Error ? err.message : "The engine did not answer.")
     } finally {
       setThinking(false)
     }
-  }, [difficulty, syncGame])
+  }, [difficulty, persist])
 
   const playMove = (from: string, to: string, promotion?: string) => {
     let move: Move
@@ -192,7 +228,7 @@ export default function ChessGame() {
     setLastMove({ from: move.from, to: move.to })
     setSelected(null)
     bump()
-    void syncGame()
+    void persist()
     void requestEngineMove()
     return true
   }
@@ -218,11 +254,13 @@ export default function ChessGame() {
     setSelected(piece && piece.color === playerColor ? square : null)
   }
 
-  const newGame = async () => {
-    const color = nextColor
+  const startGame = (color: PieceColor) => {
     game.current = new Chess()
     gameId.current = null
+    colorRef.current = color
+    creating.current = null
     setPlayerColor(color)
+    setPendingColor(color)
     setOrientation(color)
     setSelected(null)
     setLastMove(null)
@@ -233,32 +271,27 @@ export default function ChessGame() {
     setError(null)
     bump()
 
-    try {
-      const response = await fetch("/api/games", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ difficulty, playerColor: color }),
-      })
-      if (response.ok) {
-        gameId.current = (await response.json()).id
-        setHistoryKey((k) => k + 1)
-      }
-    } catch {
-      // Play offline rather than blocking on the history service.
-    }
-
     if (color === "b") void requestEngineMove()
+  }
+
+  /** Before a move is played there is nothing to lose, so picking a side takes
+   * effect at once - the board flips and, as black, the engine opens. Once a
+   * game has finished the choice is staged for the next one instead, so the
+   * final position stays on screen. */
+  const chooseColor = (color: PieceColor) => {
+    setPendingColor(color)
+    if (history.length === 0) startGame(color)
   }
 
   const resign = () => {
     // Resigning mid-search would save the pre-move position while the engine's
     // reply still lands on the board, leaving the two out of step.
-    if (finished || thinking || history.length === 0) return
+    if (!inProgress || thinking) return
     setResigned(true)
-    void syncGame({
+    void persist({
       status: "finished",
       outcome: "loss",
-      result: playerColor === "w" ? "0-1" : "1-0",
+      result: colorRef.current === "w" ? "0-1" : "1-0",
       termination: "resigned",
     })
   }
@@ -285,6 +318,12 @@ export default function ChessGame() {
       }
     }
   }
+
+  // A game is under way once a move exists and it has not ended. That, not
+  // "any move has ever been played", is what the pickers lock against: after
+  // checkmate you are choosing sides for the next game, not changing this one.
+  const inProgress = history.length > 0 && !finished
+  const locked = inProgress || thinking
 
   const { advantage, leader } = materialBalance(captured)
   const opponentColor: PieceColor = playerColor === "w" ? "b" : "w"
@@ -321,7 +360,10 @@ export default function ChessGame() {
           <EngineSelector
             difficulty={difficulty}
             onDifficultyChange={setDifficulty}
-            disabled={thinking || history.length > 0}
+            disabled={locked}
+            lockedReason={
+              inProgress ? "Finish or resign this game to change engine" : undefined
+            }
           />
         </div>
 
@@ -338,7 +380,7 @@ export default function ChessGame() {
           />
           <button
             type="button"
-            onClick={() => void newGame()}
+            onClick={() => startGame(pendingColor)}
             disabled={thinking}
             className="h-10 rounded-lg bg-ink px-[18px] text-xs font-bold tracking-[0.12em] text-white transition-colors hover:bg-[#2e2e2b] disabled:opacity-40"
           >
@@ -405,11 +447,16 @@ export default function ChessGame() {
                   <button
                     key={color}
                     type="button"
-                    onClick={() => setNextColor(color)}
-                    aria-pressed={nextColor === color}
+                    onClick={() => chooseColor(color)}
+                    disabled={locked}
+                    aria-pressed={pendingColor === color}
+                    title={inProgress ? "Finish or resign this game to switch sides" : undefined}
                     className={cn(
                       "rounded-md px-3.5 py-1.5 text-xs font-bold transition-colors",
-                      nextColor === color ? "bg-ink text-white" : "text-slate hover:text-ink",
+                      pendingColor === color
+                        ? "bg-ink text-white"
+                        : cn("text-slate", locked ? "opacity-50" : "hover:text-ink"),
+                      locked && "cursor-not-allowed",
                     )}
                   >
                     {color === "w" ? "White" : "Black"}
@@ -417,6 +464,19 @@ export default function ChessGame() {
                 ))}
               </div>
             </div>
+
+            {/* One line covering both pickers, so a disabled control is never
+                just greyed out with no reason given. */}
+            {inProgress && (
+              <p className="-mt-1 text-xs leading-[1.5] text-mute">
+                Engine and colour are locked while a game is on. Finish it, or resign.
+              </p>
+            )}
+            {finished && pendingColor !== playerColor && (
+              <p className="-mt-1 text-xs leading-[1.5] text-mute">
+                You will play {pendingColor === "w" ? "white" : "black"} next game.
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-2">

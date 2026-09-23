@@ -1,7 +1,6 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import Link from "next/link"
 import { Chess } from "chess.js"
 
 import ChessBoard from "@/components/ChessBoard"
@@ -10,6 +9,7 @@ import PromotionDialog from "@/components/PromotionDialog"
 import RoomSeats from "@/components/RoomSeats"
 import Scoresheet from "@/components/Scoresheet"
 import ShareLink from "@/components/ShareLink"
+import SiteMark from "@/components/SiteMark"
 import { materialBalance, type PieceColor, type PlayedMove } from "@/lib/chess-ui"
 import type { Difficulty } from "@/lib/engines"
 import { useRoom } from "@/lib/room"
@@ -42,22 +42,21 @@ export default function RoomBoard({ roomId, name, role }: RoomBoardProps) {
     return replay
   }, [state?.moves])
 
-  const boardWidth = { width: "min(92vw, calc(100vh - 13.5rem))", maxWidth: "100%" }
-
   const header = (
-    <header className="flex items-center justify-between gap-4 border-b border-rule px-6 py-3 sm:px-14">
-      <Link href="/" className="wide text-base font-semibold tracking-tight hover:text-brass">
-        Chess AI
-      </Link>
-      <span className="figures text-sm text-graphite">Room {roomId}</span>
+    <header
+      className="flex items-center justify-between gap-4 border-b border-line bg-white"
+      style={{ padding: "14px clamp(16px, 4vw, 48px)" }}
+    >
+      <SiteMark />
+      <span className="figures text-[13px] text-mute">Room {roomId}</span>
     </header>
   )
 
   if (!state) {
     return (
-      <div className="min-h-screen">
+      <div className="flex min-h-screen flex-col bg-paper">
         {header}
-        <p className="px-6 py-24 text-center text-[15px] text-graphite">
+        <p className="px-6 py-24 text-center text-[13px] text-mute">
           {connection === "closed" ? (error ?? "Lost contact with the room.") : "Joining the room…"}
         </p>
       </div>
@@ -113,7 +112,11 @@ export default function RoomBoard({ roomId, name, role }: RoomBoardProps) {
   const opponentSide: PieceColor = view === "w" ? "b" : "w"
   const seatName = (color: PieceColor) => state.seats[color]?.name ?? "Empty seat"
   const seatDetail = (color: PieceColor) =>
-    state.seats[color]?.kind === "engine" ? "engine" : yourColor === color ? "you" : undefined
+    state.seats[color]?.kind === "engine"
+      ? `engine · ${color === "w" ? "white" : "black"}`
+      : color === "w"
+        ? "white"
+        : "black"
 
   let status: string
   if (state.status === "waiting") status = "Waiting for both seats"
@@ -121,89 +124,108 @@ export default function RoomBoard({ roomId, name, role }: RoomBoardProps) {
     status = `Checkmate. ${state.result === "1-0" ? "White" : "Black"} wins.`
   else if (finished && state.termination === "resigned")
     status = `${state.result === "1-0" ? "Black" : "White"} resigned.`
-  else if (finished) status = "Drawn."
+  else if (finished) status = "Drawn"
   else if (yourTurn) status = "Your move"
   else status = `${SIDE[state.turn]} to move`
 
-  const quiet =
-    "text-left text-[15px] text-graphite transition-colors hover:text-chalk disabled:opacity-40 disabled:hover:text-graphite"
+  const quietButton =
+    "h-11 rounded-lg border border-field bg-white text-[13px] font-semibold text-ink transition-colors hover:border-ink disabled:opacity-40 disabled:hover:border-field"
 
   return (
-    <div className="min-h-screen">
+    <div className="flex min-h-screen flex-col bg-paper">
       {header}
 
-      <main className="mx-auto grid max-w-[1328px] justify-center gap-x-10 gap-y-8 px-6 py-7 sm:px-10 lg:grid-cols-[minmax(0,17.5rem)_auto_minmax(0,17.5rem)] xl:gap-x-14 lg:items-start">
-        <div className="order-2 lg:order-1 lg:pt-12">
-          <p
-            className={cn(
-              "wide text-[30px] font-semibold leading-tight tracking-tight",
-              finished && "text-brass",
-            )}
-          >
-            {status}
-          </p>
-
-          {connection !== "open" && (
-            <p className="mt-3 text-[15px] text-alarm">
-              {connection === "connecting" ? "Connecting…" : "Disconnected. Reload to rejoin."}
-            </p>
-          )}
-          {error && connection === "open" && <p className="mt-3 text-[15px] text-alarm">{error}</p>}
-          {yourColor === null && connection === "open" && (
-            <p className="mt-3 text-[15px] text-graphite">You are watching this game.</p>
-          )}
-
-          <div className="mt-8">
-            <RoomSeats
-              state={state}
-              onSit={(color) => send({ type: "sit", color })}
-              onSeatEngine={(color, difficulty: Difficulty) =>
-                send({ type: "engine", color, difficulty })
-              }
-              onClearSeat={(color) => send({ type: "clearSeat", color })}
-            />
+      <main
+        className="flex flex-1 flex-wrap items-start justify-center"
+        style={{
+          gap: "clamp(24px, 3vw, 48px)",
+          padding: "clamp(24px, 4vw, 48px) clamp(16px, 3vw, 40px)",
+        }}
+      >
+        <aside className="flex max-w-[300px] flex-[1_1_240px] flex-col gap-5">
+          <div>
+            <div className="mb-2 text-[11px] font-bold tracking-[0.16em] text-mute">
+              MOVE {Math.floor(state.moves.length / 2) + 1}
+            </div>
+            <h1
+              className={cn(
+                "font-display text-[40px] font-medium leading-[1.05] tracking-[-0.01em]",
+                finished && "text-goldink",
+              )}
+            >
+              {status}
+            </h1>
           </div>
 
-          <div className="mt-7 flex flex-col items-start gap-3.5">
+          {(connection !== "open" || error) && (
+            <div className="rounded-[10px] border border-alarm-line bg-alarm-surface px-4 py-3.5">
+              <p className="text-[13px] leading-[1.5] text-alarm [text-wrap:pretty]">
+                {connection === "connecting"
+                  ? "Connecting…"
+                  : connection === "closed"
+                    ? "Disconnected. Reload to rejoin."
+                    : error}
+              </p>
+            </div>
+          )}
+
+          {yourColor === null && connection === "open" && (
+            <p className="text-[13px] text-slate">You are watching this game.</p>
+          )}
+
+          <RoomSeats
+            state={state}
+            onSit={(color) => send({ type: "sit", color })}
+            onSeatEngine={(color, difficulty: Difficulty) =>
+              send({ type: "engine", color, difficulty })
+            }
+            onClearSeat={(color) => send({ type: "clearSeat", color })}
+          />
+
+          <div className="flex flex-col gap-2">
             <button
               type="button"
-              onClick={() => send({ type: "newGame" })}
-              disabled={yourColor === null || (!finished && state.moves.length > 0)}
-              className="text-left text-[15px] font-semibold text-brass transition-colors hover:text-[#E6B75C] disabled:opacity-40"
+              onClick={() => setOrientation(view === "w" ? "b" : "w")}
+              className={quietButton}
             >
-              New game
+              Flip board
             </button>
             <button
               type="button"
               onClick={() => send({ type: "resign" })}
               disabled={yourColor === null || finished || state.moves.length === 0}
-              className={quiet}
+              className={quietButton}
             >
               Resign
             </button>
             <button
               type="button"
-              onClick={() => setOrientation(view === "w" ? "b" : "w")}
-              className={quiet}
+              onClick={() => send({ type: "newGame" })}
+              disabled={yourColor === null || (!finished && state.moves.length > 0)}
+              className="h-11 rounded-lg bg-ink text-xs font-bold tracking-[0.12em] text-white transition-colors hover:bg-[#2e2e2b] disabled:opacity-40"
             >
-              Flip board
+              NEW GAME
             </button>
           </div>
-        </div>
 
-        <section className="order-1 flex flex-col items-center lg:order-2">
-          <div style={boardWidth}>
-            <PlayerRail
-              name={seatName(opponentSide)}
-              color={opponentSide}
-              detail={seatDetail(opponentSide)}
-              captured={captured[view]}
-              capturedColor={view}
-              advantage={leader === opponentSide ? advantage : 0}
-              active={state.turn === opponentSide && !finished}
-              edge="top"
-            />
-          </div>
+          <ShareLink roomId={roomId} />
+        </aside>
+
+        <section
+          className="flex min-w-0 flex-[1_1_420px] flex-col gap-3"
+          style={{ maxWidth: "min(640px, calc(100vh - 16rem))" }}
+        >
+          <PlayerRail
+            name={seatName(opponentSide)}
+            color={opponentSide}
+            detail={seatDetail(opponentSide)}
+            initial={seatName(opponentSide).charAt(0).toUpperCase()}
+            variant="opponent"
+            captured={captured[view]}
+            capturedColor={view}
+            advantage={leader === opponentSide ? advantage : 0}
+            active={state.turn === opponentSide && !finished}
+          />
 
           <ChessBoard
             board={board}
@@ -216,24 +238,25 @@ export default function RoomBoard({ roomId, name, role }: RoomBoardProps) {
             onSquareClick={handleSquareClick}
           />
 
-          <div style={boardWidth}>
-            <PlayerRail
-              name={seatName(view)}
-              color={view}
-              detail={seatDetail(view)}
-              captured={captured[opponentSide]}
-              capturedColor={opponentSide}
-              advantage={leader === view ? advantage : 0}
-              active={state.turn === view && !finished}
-              edge="bottom"
-            />
-          </div>
+          <PlayerRail
+            name={seatName(view)}
+            color={view}
+            detail={seatDetail(view)}
+            initial={seatName(view).charAt(0).toUpperCase()}
+            variant="you"
+            captured={captured[opponentSide]}
+            capturedColor={opponentSide}
+            advantage={leader === view ? advantage : 0}
+            active={state.turn === view && !finished}
+          />
         </section>
 
-        <div className="order-3 lg:pt-12">
+        <aside
+          className="sticky top-6 flex flex-[0_0_260px] flex-col self-stretch overflow-auto rounded-xl border border-line bg-white p-[18px]"
+          style={{ maxHeight: "calc(100vh - 140px)" }}
+        >
           <Scoresheet moves={playedMoves} result={finished ? state.result : null} />
-          <ShareLink roomId={roomId} />
-        </div>
+        </aside>
       </main>
 
       {pendingPromotion && yourColor && (

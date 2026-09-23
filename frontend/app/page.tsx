@@ -11,6 +11,7 @@ import GameHistory from "@/components/GameHistory"
 import PlayerRail from "@/components/PlayerRail"
 import PromotionDialog from "@/components/PromotionDialog"
 import Scoresheet from "@/components/Scoresheet"
+import SiteMark from "@/components/SiteMark"
 import { materialBalance, type PieceColor, type PlayedMove } from "@/lib/chess-ui"
 import { ENGINES, type Difficulty } from "@/lib/engines"
 import { cn } from "@/lib/utils"
@@ -25,7 +26,7 @@ type GameState = {
   label: string
 }
 
-/** Single source of truth for "how did this game end", shared by the status
+/** Single source of truth for "how did this game end", shared by the display
  * line, the scoresheet footer, and what gets written to history. */
 function describeGame(game: Chess, playerColor: PieceColor): GameState {
   const turn = game.turn()
@@ -47,11 +48,11 @@ function describeGame(game: Chess, playerColor: PieceColor): GameState {
       outcome: "draw",
       result: "1/2-1/2",
       termination: "stalemate",
-      label: "Stalemate. Nobody wins.",
+      label: "Stalemate",
     }
   }
   if (game.isDraw()) {
-    return { status: "finished", outcome: "draw", result: "1/2-1/2", termination: "draw", label: "Drawn." }
+    return { status: "finished", outcome: "draw", result: "1/2-1/2", termination: "draw", label: "Drawn" }
   }
   return {
     status: "in_progress",
@@ -292,8 +293,9 @@ export default function ChessGame() {
   // The engine is stuck if it was its turn and the request failed.
   const engineStalled = error !== null && !thinking && !finished && turn !== playerColor
 
-  const statusLabel = resigned ? "You resigned." : state.label
+  const statusLabel = resigned ? "You resigned" : state.label
   const resultLabel = resigned ? (playerColor === "w" ? "0-1" : "1-0") : state.result
+  const moveNumber = Math.floor(history.length / 2) + 1
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -304,116 +306,164 @@ export default function ChessGame() {
     return () => window.removeEventListener("keydown", onKey)
   }, [])
 
-  const quiet = "text-left text-[15px] text-graphite transition-colors hover:text-chalk disabled:opacity-40 disabled:hover:text-graphite"
-  const boardWidth = { width: "min(92vw, calc(100vh - 13.5rem))", maxWidth: "100%" }
+  const quietButton =
+    "h-11 rounded-lg border border-field bg-white text-[13px] font-semibold text-ink transition-colors hover:border-ink disabled:opacity-40 disabled:hover:border-field"
 
   return (
-    <div className="min-h-screen">
-      {/* Global controls live up here, not stacked beside the board. */}
-      <header className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 border-b border-rule px-6 py-3 sm:px-14">
-        <span className="wide text-base font-semibold tracking-tight">Chess AI</span>
-        <EngineSelector
-          difficulty={difficulty}
-          onDifficultyChange={setDifficulty}
-          disabled={thinking || history.length > 0}
-        />
-        <div className="flex items-center justify-end gap-6">
-          <AuthPanel user={user} onAuthenticated={(u) => { setUser(u); setHistoryKey((k) => k + 1) }} onSignedOut={() => { gameId.current = null; loadIdentity(); setHistoryKey((k) => k + 1) }} />
+    <div className="flex min-h-screen flex-col bg-paper">
+      <header
+        className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-line bg-white lg:grid lg:grid-cols-[1fr_auto_1fr]"
+        style={{ padding: "14px clamp(16px, 4vw, 48px)" }}
+      >
+        <SiteMark />
+
+        <div className="order-last flex w-full justify-center lg:order-none lg:w-auto">
+          <EngineSelector
+            difficulty={difficulty}
+            onDifficultyChange={setDifficulty}
+            disabled={thinking || history.length > 0}
+          />
+        </div>
+
+        <div className="flex items-center justify-end gap-[18px]">
+          <AuthPanel
+            user={user}
+            onAuthenticated={(u) => {
+              setUser(u)
+              setHistoryKey((k) => k + 1)
+            }}
+            onSignedOut={() => {
+              gameId.current = null
+              loadIdentity()
+              setHistoryKey((k) => k + 1)
+            }}
+          />
           <button
             type="button"
             onClick={() => void newGame()}
             disabled={thinking}
-            className="text-[15px] font-semibold text-brass transition-colors hover:text-[#E6B75C] disabled:opacity-40"
+            className="h-10 rounded-lg bg-ink px-[18px] text-xs font-bold tracking-[0.12em] text-white transition-colors hover:bg-[#2e2e2b] disabled:opacity-40"
           >
-            New game
+            NEW GAME
           </button>
         </div>
       </header>
 
-      {/* Board dead-centre, one job in each flanking column. */}
-      <main className="mx-auto grid max-w-[1328px] justify-center gap-x-10 gap-y-8 px-6 py-7 sm:px-10 lg:grid-cols-[minmax(0,17.5rem)_auto_minmax(0,17.5rem)] xl:gap-x-14 lg:items-start">
-        <div className="order-2 lg:order-1 lg:pt-12">
-          <p
-            className={cn(
-              "wide text-[30px] font-semibold leading-tight tracking-tight",
-              finished && "text-brass",
-            )}
-          >
-            {statusLabel}
-          </p>
-
-          {error && <p className="mt-3 text-[15px] text-alarm">{error}</p>}
-
-          {engineStalled && (
-            <button
-              type="button"
-              onClick={() => void requestEngineMove()}
-              className="mt-3 text-[15px] font-semibold text-brass hover:text-[#E6B75C]"
+      <main
+        className="flex flex-1 flex-wrap items-start justify-center"
+        style={{
+          gap: "clamp(24px, 3vw, 48px)",
+          padding: "clamp(24px, 4vw, 48px) clamp(16px, 3vw, 40px)",
+        }}
+      >
+        <aside className="flex max-w-[300px] flex-[1_1_240px] flex-col gap-5">
+          <div>
+            <div className="mb-2 text-[11px] font-bold tracking-[0.16em] text-mute">
+              MOVE {moveNumber}
+            </div>
+            <h1
+              className={cn(
+                "font-display text-[40px] font-medium leading-[1.05] tracking-[-0.01em]",
+                finished && "text-goldink",
+              )}
             >
-              Try that move again
-            </button>
+              {statusLabel}
+            </h1>
+          </div>
+
+          {error && (
+            <div className="flex flex-col gap-2.5 rounded-[10px] border border-alarm-line bg-alarm-surface px-4 py-3.5">
+              <p className="text-[13px] leading-[1.5] text-alarm [text-wrap:pretty]">{error}</p>
+              {engineStalled && (
+                <button
+                  type="button"
+                  onClick={() => void requestEngineMove()}
+                  className="self-start text-[13px] font-bold text-ink underline decoration-gold underline-offset-4"
+                >
+                  Try that move again
+                </button>
+              )}
+            </div>
           )}
 
-          <div className="mt-8 border-t border-rule pt-5">
-            <p className="text-[15px] font-medium">{engine.opponent}</p>
-            <p className="mt-1.5 text-sm leading-relaxed text-graphite">{engine.detail}</p>
-            {substituted && !error && (
-              <p className="mt-2 text-sm leading-relaxed text-graphite">
-                {ENGINES[difficulty].label} is unavailable, so {engine.opponent} is playing instead.
-              </p>
-            )}
+          <div className="flex flex-col gap-4 rounded-xl border border-line bg-white p-[18px]">
+            <div>
+              <div className="text-[15px] font-bold">{engine.opponent}</div>
+              <div className="mt-1 text-[13px] leading-[1.5] text-slate">{engine.detail}</div>
+              {substituted && !error && (
+                <div className="mt-2 text-[13px] leading-[1.5] text-slate">
+                  {ENGINES[difficulty].label} is unavailable, so {engine.opponent} is playing
+                  instead.
+                </div>
+              )}
+            </div>
+
+            <div className="h-px bg-divider" />
+
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[13px] text-slate">Play as</span>
+              <div className="flex gap-1 rounded-lg bg-chip p-[3px]">
+                {(["w", "b"] as const).map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => setNextColor(color)}
+                    aria-pressed={nextColor === color}
+                    className={cn(
+                      "rounded-md px-3.5 py-1.5 text-xs font-bold transition-colors",
+                      nextColor === color ? "bg-ink text-white" : "text-slate hover:text-ink",
+                    )}
+                  >
+                    {color === "w" ? "White" : "Black"}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
-          <div className="mt-7 flex items-center gap-3">
-            <span className="text-sm text-graphite">Play as</span>
-            {(["w", "b"] as const).map((color) => (
-              <button
-                key={color}
-                type="button"
-                onClick={() => setNextColor(color)}
-                aria-pressed={nextColor === color}
-                className={cn(
-                  "text-sm transition-colors",
-                  nextColor === color ? "text-chalk underline decoration-brass underline-offset-4" : "text-graphite hover:text-chalk",
-                )}
-              >
-                {color === "w" ? "White" : "Black"}
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-6 flex flex-col items-start gap-3.5">
-            <button type="button" onClick={resign} disabled={finished || thinking || history.length === 0} className={quiet}>
-              Resign
-            </button>
-            <button type="button" onClick={() => setOrientation((o) => (o === "w" ? "b" : "w"))} className={quiet}>
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => setOrientation((o) => (o === "w" ? "b" : "w"))}
+              className={quietButton}
+            >
               Flip board
+            </button>
+            <button
+              type="button"
+              onClick={resign}
+              disabled={finished || thinking || history.length === 0}
+              className={quietButton}
+            >
+              Resign
             </button>
             <button
               type="button"
               onClick={() => void openRoom()}
               disabled={openingRoom}
-              className="text-left text-[15px] font-semibold text-brass transition-colors hover:text-[#E6B75C] disabled:opacity-40"
+              className="h-11 rounded-lg border border-gold bg-goldwash text-[13px] font-bold text-goldink transition-colors hover:bg-goldwarm disabled:opacity-40"
             >
               {openingRoom ? "Opening a room…" : "Play someone else"}
             </button>
           </div>
-        </div>
+        </aside>
 
-        <section className="order-1 flex flex-col items-center lg:order-2">
-          <div style={boardWidth}>
-            <PlayerRail
-              name={engine.opponent}
-              color={opponentColor}
-              detail="engine"
-              captured={captured[playerColor]}
-              capturedColor={playerColor}
-              advantage={leader === opponentColor ? advantage : 0}
-              active={turn === opponentColor && !finished}
-              thinking={thinking}
-              edge="top"
-            />
-          </div>
+        <section
+          className="flex min-w-0 flex-[1_1_420px] flex-col gap-3"
+          style={{ maxWidth: "min(640px, calc(100vh - 16rem))" }}
+        >
+          <PlayerRail
+            name={engine.opponent}
+            color={opponentColor}
+            detail={`engine · ${opponentColor === "w" ? "white" : "black"}`}
+            initial={engine.opponent.charAt(0)}
+            variant="opponent"
+            captured={captured[playerColor]}
+            capturedColor={playerColor}
+            advantage={leader === opponentColor ? advantage : 0}
+            active={turn === opponentColor && !finished}
+            thinking={thinking}
+          />
 
           <ChessBoard
             board={board}
@@ -426,23 +476,25 @@ export default function ChessGame() {
             onSquareClick={handleSquareClick}
           />
 
-          <div style={boardWidth}>
-            <PlayerRail
-              name={user ? user.username : "You"}
-              color={playerColor}
-              detail={playerColor === "w" ? "white" : "black"}
-              captured={captured[opponentColor]}
-              capturedColor={opponentColor}
-              advantage={leader === playerColor ? advantage : 0}
-              active={turn === playerColor && !finished}
-              edge="bottom"
-            />
-          </div>
+          <PlayerRail
+            name={user ? user.username : "You"}
+            color={playerColor}
+            detail={playerColor === "w" ? "white" : "black"}
+            initial={(user?.username ?? "You").charAt(0).toUpperCase()}
+            variant="you"
+            captured={captured[opponentColor]}
+            capturedColor={opponentColor}
+            advantage={leader === playerColor ? advantage : 0}
+            active={turn === playerColor && !finished}
+          />
         </section>
 
-        <div className="order-3 lg:pt-12">
+        <aside
+          className="sticky top-6 flex flex-[0_0_260px] flex-col self-stretch overflow-auto rounded-xl border border-line bg-white p-[18px]"
+          style={{ maxHeight: "calc(100vh - 140px)" }}
+        >
           <Scoresheet moves={playedMoves} result={resultLabel} />
-        </div>
+        </aside>
       </main>
 
       <GameHistory refreshKey={historyKey} />

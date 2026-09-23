@@ -7,8 +7,13 @@ interface PlayerRailProps {
   name: string
   /** Which side this player is. */
   color: PieceColor
-  /** Shown after the name, e.g. what the engine does. */
+  /** Shown after the name: "engine · black", or just the colour. */
   detail?: string
+  /** Single letter for the tile. */
+  initial: string
+  /** The opponent's tile is solid ink and set in the mark face; yours is the
+   * gold-washed one. */
+  variant: "opponent" | "you"
   /** Piece types this player has captured from the opponent. */
   captured: string[]
   /** Colour of the captured pieces, i.e. the opponent's colour. */
@@ -18,49 +23,49 @@ interface PlayerRailProps {
   /** True when it is this player's move. */
   active?: boolean
   thinking?: boolean
-  /** The rail above the board takes its hairline below, and vice versa. */
-  edge: "top" | "bottom"
 }
 
 const ORDER = ["q", "r", "b", "n", "p"]
 
-/** A line of type on the ground rather than a filled block, with one accent
- * dot for whose move it is - the turn used to be stated only in words, off in
- * a column beside the board. */
 export default function PlayerRail({
   name,
-  color,
   detail,
+  initial,
+  variant,
   captured,
   capturedColor,
   advantage,
   active,
   thinking,
-  edge,
 }: PlayerRailProps) {
   const sorted = [...captured].sort(
     (a, b) => ORDER.indexOf(a) - ORDER.indexOf(b) || PIECE_VALUES[b] - PIECE_VALUES[a],
   )
 
   return (
-    <div
-      className={cn(
-        "flex h-12 w-full items-center gap-2.5",
-        edge === "top" ? "border-b border-rule" : "border-t border-rule",
-      )}
-    >
+    <div className="flex items-center gap-2.5">
       <span
         aria-hidden
-        className={cn("h-[7px] w-[7px] shrink-0 rounded-full", active ? "bg-brass" : "bg-transparent")}
-      />
-      <span className="truncate text-[16px] font-medium">{name}</span>
-      {detail && <span className="truncate text-sm text-graphite">{detail}</span>}
+        className={cn(
+          "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[13px] font-bold",
+          variant === "opponent"
+            ? "bg-ink font-mark text-[14px] text-white"
+            : "border border-gold bg-goldwash text-goldink",
+        )}
+      >
+        {initial}
+      </span>
 
-      <span className="ml-auto flex shrink-0 items-center gap-3">
+      <span className="truncate text-[15px] font-bold">{name}</span>
+      {detail && <span className="truncate text-[13px] text-mute">{detail}</span>}
+
+      <span className="ml-auto flex shrink-0 items-center gap-2.5">
         {sorted.length > 0 && (
           <span
-            className="flex items-center text-lg leading-none text-graphite"
-            style={{ color: capturedColor === "w" ? "#C9CDD1" : "#4B5157" }}
+            className={cn(
+              "flex items-center text-[17px] leading-none [font-family:'Segoe_UI_Symbol','DejaVu_Sans',serif]",
+              capturedColor === "w" ? "text-mute" : "text-ink/70",
+            )}
           >
             {sorted.map((type, i) => (
               <span key={i} className="-ml-1.5 first:ml-0">
@@ -69,13 +74,14 @@ export default function PlayerRail({
             ))}
           </span>
         )}
-        {advantage > 0 && <span className="figures text-sm text-brass">+{advantage}</span>}
-        {thinking && (
-          <span className="flex items-center gap-2 text-sm text-graphite">
-            <span className="h-3 w-3 animate-spin rounded-full border-2 border-brass/70 border-t-transparent" />
-            thinking
-          </span>
+        {advantage > 0 && (
+          <span className="figures text-[13px] font-bold text-goldink">+{advantage}</span>
         )}
+        {thinking && <span className="text-[13px] text-mute">thinking…</span>}
+        <span
+          aria-hidden
+          className={cn("h-2 w-2 rounded-full", active ? "bg-gold" : "bg-idle")}
+        />
       </span>
     </div>
   )

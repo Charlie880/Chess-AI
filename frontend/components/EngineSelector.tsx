@@ -11,15 +11,19 @@ interface EngineSelectorProps {
 
 const ORDER: Difficulty[] = ["easy", "normal", "hard"]
 
-/** Lives in the top bar now. Choosing an opponent is a global control, not
- * something that belongs stacked in a column beside the board. */
+/** The segmented control in the header. Choosing an opponent is a global
+ * control, so it sits with the rest of them rather than beside the board. */
 export default function EngineSelector({
   difficulty,
   onDifficultyChange,
   disabled,
 }: EngineSelectorProps) {
   return (
-    <div className="flex gap-6" role="radiogroup" aria-label="Opponent">
+    <nav
+      className="flex gap-1 rounded-[10px] bg-chip p-1"
+      role="radiogroup"
+      aria-label="Opponent"
+    >
       {ORDER.map((id) => (
         <button
           key={id}
@@ -30,15 +34,13 @@ export default function EngineSelector({
           disabled={disabled}
           title={ENGINES[id].detail}
           className={cn(
-            "border-b-2 px-0.5 py-1 text-[15px] transition-colors disabled:opacity-40",
-            difficulty === id
-              ? "border-brass font-semibold text-chalk"
-              : "border-transparent text-graphite hover:text-chalk",
+            "rounded-[7px] px-[18px] py-2 text-[13px] font-bold tracking-[0.06em] transition-colors disabled:opacity-50",
+            difficulty === id ? "bg-white text-ink shadow-pill" : "text-mute hover:text-ink",
           )}
         >
           {ENGINES[id].label}
         </button>
       ))}
-    </div>
+    </nav>
   )
 }

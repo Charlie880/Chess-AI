@@ -30,8 +30,8 @@ function relative(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" })
 }
 
-/** Its own full-width section below the board, not a panel squeezed into a
- * column. Results read by brightness rather than by colour. */
+/** Not in the design, which only covers the game itself - this keeps the
+ * history feature, dressed in the same palette, below the board. */
 export default function GameHistory({ refreshKey }: { refreshKey: number }) {
   const [games, setGames] = useState<GameRecord[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
@@ -62,46 +62,54 @@ export default function GameHistory({ refreshKey }: { refreshKey: number }) {
   }, [load, refreshKey])
 
   return (
-    <section className="border-t border-rule">
-      <div className="mx-auto max-w-[1328px] px-6 py-10 sm:px-14">
-        <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2">
-          <h2 className="wide text-[22px] font-semibold tracking-tight">Your games</h2>
+    <section
+      className="border-t border-line bg-white"
+      style={{ padding: "clamp(28px, 4vw, 44px) clamp(16px, 3vw, 40px)" }}
+    >
+      <div className="mx-auto max-w-[1180px]">
+        <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+          <h2 className="font-display text-[22px] font-medium tracking-[-0.01em]">Your games</h2>
           {stats && stats.finished > 0 && (
-            <p className="figures text-[15px] text-graphite">
-              <span className="text-chalk">{stats.win} won</span> · {stats.loss} lost ·{" "}
+            <p className="figures text-[13px] text-mute">
+              <span className="font-bold text-goldink">{stats.win} won</span> · {stats.loss} lost ·{" "}
               {stats.draw} drawn
             </p>
           )}
         </div>
 
-        {error && <p className="mt-5 text-[15px] text-alarm">{error}</p>}
+        {error && <p className="mt-4 text-[13px] text-alarm">{error}</p>}
 
         {!error && games.length === 0 && (
-          <p className="mt-5 max-w-md text-[15px] leading-relaxed text-graphite">
+          <p className="mt-4 max-w-md text-[13px] leading-[1.5] text-mute">
             No games yet. Play one through and it lands here with its result.
           </p>
         )}
 
-        <div className="mt-5">
+        <div className="mt-4">
           {games.map((game) => (
             <div
               key={game.id}
-              className="grid grid-cols-[5rem_1fr_auto] items-baseline gap-4 border-t border-rule py-3.5 text-[15px] sm:grid-cols-[7rem_1fr_6rem_5rem]"
+              className="grid grid-cols-[4.5rem_1fr_auto] items-baseline gap-4 border-t border-divider py-3 text-[13px] sm:grid-cols-[6rem_1fr_6rem_5rem]"
             >
-              <span className={cn(game.outcome === "win" ? "text-chalk" : "text-graphite")}>
+              <span
+                className={cn(
+                  "font-semibold",
+                  game.outcome === "win" ? "text-goldink" : "text-slate",
+                )}
+              >
                 {game.status === "in_progress"
                   ? "Playing"
                   : (OUTCOME_LABEL[game.outcome ?? ""] ?? "Unfinished")}
               </span>
-              <span className="truncate text-graphite">
+              <span className="truncate text-slate">
                 {game.opponent ??
                   (game.difficulty ? ENGINES[game.difficulty].opponent : "Unknown")}{" "}
                 as {game.playerColor === "w" ? "white" : "black"}
               </span>
-              <span className="figures hidden text-graphite sm:block">
+              <span className="figures hidden text-mute sm:block">
                 {Math.ceil(game.moves.length / 2)} moves
               </span>
-              <span className="text-graphite">{relative(game.startedAt)}</span>
+              <span className="text-mute">{relative(game.startedAt)}</span>
             </div>
           ))}
         </div>

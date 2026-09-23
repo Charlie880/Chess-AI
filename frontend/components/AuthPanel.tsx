@@ -19,8 +19,7 @@ interface AuthPanelProps {
   onSignedOut: () => void
 }
 
-/** Sits in the top bar as a name and one link. The form only appears when
- * someone asks for it, rather than occupying a panel beside every game. */
+/** One link in the header. The form only appears when someone asks for it. */
 export default function AuthPanel({ user, onAuthenticated, onSignedOut }: AuthPanelProps) {
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<"login" | "register">("login")
@@ -65,26 +64,32 @@ export default function AuthPanel({ user, onAuthenticated, onSignedOut }: AuthPa
 
   return (
     <>
-      <span className="flex items-center gap-4 text-sm text-graphite">
-        <span className="hidden max-w-[10rem] truncate sm:inline">{user?.username ?? "…"}</span>
-        {user?.kind === "user" ? (
-          <button type="button" onClick={signOut} className="transition-colors hover:text-chalk">
-            Sign out
-          </button>
-        ) : (
+      {user?.kind === "user" ? (
+        <span className="flex items-center gap-4 text-sm">
+          <span className="hidden max-w-[10rem] truncate font-semibold sm:inline">
+            {user.username}
+          </span>
           <button
             type="button"
-            onClick={() => setOpen(true)}
-            className="transition-colors hover:text-chalk"
+            onClick={signOut}
+            className="font-semibold text-slate transition-colors hover:text-goldink"
           >
-            Sign in
+            Sign out
           </button>
-        )}
-      </span>
+        </span>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="text-sm font-semibold transition-colors hover:text-goldink"
+        >
+          Sign in
+        </button>
+      )}
 
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/85 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
           onClick={() => setOpen(false)}
           role="dialog"
           aria-modal="true"
@@ -93,9 +98,9 @@ export default function AuthPanel({ user, onAuthenticated, onSignedOut }: AuthPa
           <form
             onSubmit={submit}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-sm border border-rule bg-raise p-6"
+            className="w-full max-w-sm rounded-xl border border-line bg-white p-6 shadow-[0_16px_40px_rgba(20,20,18,.14)]"
           >
-            <div className="flex gap-6">
+            <div className="flex gap-1 rounded-lg bg-chip p-1">
               {(["login", "register"] as const).map((option) => (
                 <button
                   key={option}
@@ -105,10 +110,8 @@ export default function AuthPanel({ user, onAuthenticated, onSignedOut }: AuthPa
                     setError(null)
                   }}
                   className={cn(
-                    "border-b-2 pb-1.5 text-[15px] transition-colors",
-                    mode === option
-                      ? "border-brass font-semibold text-chalk"
-                      : "border-transparent text-graphite hover:text-chalk",
+                    "flex-1 rounded-md py-2 text-[13px] font-bold transition-colors",
+                    mode === option ? "bg-white text-ink shadow-pill" : "text-mute hover:text-ink",
                   )}
                 >
                   {option === "login" ? "Sign in" : "Create account"}
@@ -127,7 +130,7 @@ export default function AuthPanel({ user, onAuthenticated, onSignedOut }: AuthPa
                 required
                 minLength={3}
                 maxLength={24}
-                className="h-11 border border-rule bg-ink px-3 text-[15px] placeholder:text-graphite/70 focus:border-brass"
+                className="h-11 rounded-lg border border-field bg-white px-3 text-[14px] placeholder:text-mute focus:border-gold"
               />
               <input
                 value={password}
@@ -138,20 +141,20 @@ export default function AuthPanel({ user, onAuthenticated, onSignedOut }: AuthPa
                 autoComplete={mode === "login" ? "current-password" : "new-password"}
                 required
                 minLength={8}
-                className="h-11 border border-rule bg-ink px-3 text-[15px] placeholder:text-graphite/70 focus:border-brass"
+                className="h-11 rounded-lg border border-field bg-white px-3 text-[14px] placeholder:text-mute focus:border-gold"
               />
 
-              {error && <p className="text-sm text-alarm">{error}</p>}
+              {error && <p className="text-[13px] text-alarm">{error}</p>}
 
               <button
                 type="submit"
                 disabled={busy}
-                className="h-11 bg-brass text-[15px] font-semibold text-ink transition-colors hover:bg-[#E6B75C] disabled:opacity-40"
+                className="h-11 rounded-lg bg-ink text-xs font-bold tracking-[0.12em] text-white transition-colors hover:bg-[#2e2e2b] disabled:opacity-40"
               >
-                {mode === "login" ? "Sign in" : "Create account"}
+                {mode === "login" ? "SIGN IN" : "CREATE ACCOUNT"}
               </button>
 
-              <p className="text-sm leading-relaxed text-graphite">
+              <p className="text-[13px] leading-[1.5] text-slate">
                 {user
                   ? `Playing as ${user.username}. Your games are already saved to this browser; an account carries them to your other devices.`
                   : "An account carries your games across devices."}

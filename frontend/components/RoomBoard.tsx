@@ -6,9 +6,10 @@ import { Chess } from "chess.js"
 import ChessBoard from "@/components/ChessBoard"
 import PlayerRail from "@/components/PlayerRail"
 import PromotionDialog from "@/components/PromotionDialog"
+import RoomChat from "@/components/RoomChat"
+import RoomInvites from "@/components/RoomInvites"
 import RoomSeats from "@/components/RoomSeats"
 import Scoresheet from "@/components/Scoresheet"
-import ShareLink from "@/components/ShareLink"
 import SiteMark from "@/components/SiteMark"
 import { materialBalance, type PieceColor, type PlayedMove } from "@/lib/chess-ui"
 import type { Difficulty } from "@/lib/engines"
@@ -24,7 +25,7 @@ interface RoomBoardProps {
 const SIDE = { w: "White", b: "Black" }
 
 export default function RoomBoard({ roomId, name, role }: RoomBoardProps) {
-  const { state, connection, error, send } = useRoom(roomId, name, role)
+  const { state, chat, connection, error, notice, send, clearNotice } = useRoom(roomId, name, role)
   const [selected, setSelected] = useState<string | null>(null)
   const [orientation, setOrientation] = useState<PieceColor | null>(null)
   const [pendingPromotion, setPendingPromotion] = useState<{ from: string; to: string } | null>(null)
@@ -131,6 +132,11 @@ export default function RoomBoard({ roomId, name, role }: RoomBoardProps) {
   const quietButton =
     "h-11 rounded-lg border border-field bg-white text-[13px] font-semibold text-ink transition-colors hover:border-ink disabled:opacity-40 disabled:hover:border-field"
 
+  const absent =
+    (["w", "b"] as PieceColor[]).map((color) => state.seats[color]).find((seat) => seat?.away) ??
+    null
+  const seatOpen = state.seats.w === null || state.seats.b === null
+
   return (
     <div className="flex min-h-screen flex-col bg-paper">
       {header}
@@ -170,7 +176,36 @@ export default function RoomBoard({ roomId, name, role }: RoomBoardProps) {
           )}
 
           {yourColor === null && connection === "open" && (
-            <p className="text-[13px] text-slate">You are watching this game.</p>
+            <p className="text-[13px] text-slate">
+              {state.you.canPlay
+                ? "You are watching this game."
+                : "You are watching. Sign in to take a seat."}
+            </p>
+          )}
+
+          {/* Someone dropped: the seat is held, not lost, and the clock says
+              for how much longer. */}
+          {absent && (
+            <div className="rounded-[10px] border border-gold bg-goldwash px-4 py-3.5">
+              <p className="text-[13px] leading-[1.5] text-goldink">
+                {absent.name} lost connection. The seat is held for{" "}
+                {absent.secondsLeft ?? 0}s, then the game goes to their opponent.
+              </p>
+            </div>
+          )}
+
+          {notice && (
+            <div className="flex items-start justify-between gap-3 rounded-[10px] border border-line bg-white px-4 py-3.5">
+              <p className="text-[13px] leading-[1.5] text-slate">{notice}</p>
+              <button
+                type="button"
+                onClick={clearNotice}
+                aria-label="Dismiss"
+                className="shrink-0 text-[13px] font-bold text-mute hover:text-ink"
+              >
+                ×
+              </button>
+            </div>
           )}
 
           <RoomSeats
@@ -208,7 +243,7 @@ export default function RoomBoard({ roomId, name, role }: RoomBoardProps) {
             </button>
           </div>
 
-          <ShareLink roomId={roomId} />
+          <RoomInvites roomId={roomId} canInvite={state.you.canInvite} seatOpen={seatOpen} />
         </aside>
 
         <section
@@ -251,11 +286,16 @@ export default function RoomBoard({ roomId, name, role }: RoomBoardProps) {
           />
         </section>
 
-        <aside
-          className="sticky top-6 flex flex-[0_0_260px] flex-col self-stretch overflow-auto rounded-xl border border-line bg-white p-[18px]"
-          style={{ maxHeight: "calc(100vh - 140px)" }}
-        >
-          <Scoresheet moves={playedMoves} result={finished ? state.result : null} />
+        <aside className="flex flex-[0_0_280px] flex-col gap-4 self-stretch">
+          <div className="flex min-h-0 flex-col overflow-auto rounded-xl border border-line bg-white p-[18px]">
+            <Scoresheet moves={playedMoves} result={finished ? state.result : null} />
+          </div>
+          <RoomChat
+            messages={chat}
+            youId={state.you.id}
+            onSend={(text) => send({ type: "chat", text })}
+            disabled={connection !== "open"}
+          />
         </aside>
       </main>
 

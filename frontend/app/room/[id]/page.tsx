@@ -2,14 +2,18 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { useParams } from "next/navigation"
+import { useParams, useSearchParams } from "next/navigation"
 
 import RoomBoard from "@/components/RoomBoard"
 import SiteMark from "@/components/SiteMark"
 
 export default function RoomPage() {
   const params = useParams<{ id: string }>()
+  const search = useSearchParams()
   const roomId = params.id
+  // Arriving through an invitation already says why you are here, so the name
+  // screen would just be a speed bump.
+  const invited = search.get("as")
 
   const [name, setName] = useState("")
   const [joined, setJoined] = useState<{ name: string; role: "play" | "watch" } | null>(null)
@@ -20,10 +24,14 @@ export default function RoomPage() {
     fetch("/api/auth/me")
       .then((r) => r.json())
       .then((data) => {
-        if (data.user?.username) setName(data.user.username)
+        const username = data.user?.username
+        if (username) setName(username)
+        if (invited === "play" || invited === "watch") {
+          setJoined({ name: username || "Guest", role: invited })
+        }
       })
       .catch(() => {})
-  }, [])
+  }, [invited])
 
   if (joined) {
     return <RoomBoard roomId={roomId} name={joined.name} role={joined.role} />

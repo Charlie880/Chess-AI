@@ -34,6 +34,8 @@ async def connect() -> None:
         # Guests own games too, keyed by the id in their cookie rather than
         # a user record.
         await database.games.create_index([("guest_id", ASCENDING), ("started_at", DESCENDING)])
+        # Room chat, read back per room in the order it was said.
+        await database.messages.create_index([("room_id", ASCENDING), ("at", ASCENDING)])
     except Exception as exc:
         await client.close()
         log.warning("MongoDB unavailable, accounts and history are off: %s", exc)
@@ -63,3 +65,8 @@ def users():
 def games():
     db = database()
     return None if db is None else db.games
+
+
+def messages():
+    db = database()
+    return None if db is None else db.messages

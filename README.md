@@ -66,6 +66,14 @@ The screens follow the design's own flow: `/` is the splash, which leads to
 
 `BACKEND_URL` overrides where the frontend proxies to (default `http://127.0.0.1:8000`).
 
+`/play` is the chooser: the computer on one side, another person on the other.
+
+**No database to hand?** `python dev_memory_db.py` runs the same API against an
+in-memory Mongo, so accounts, history and chat work and disappear when the
+process exits. `MESS_GRACE=3` shortens the disconnect grace period so a forfeit
+can be watched without waiting a minute. Development only - `main.py` is what
+runs for real.
+
 ## Accounts and game history
 
 Copy `backend/.env.example` to `backend/.env` and fill in:
@@ -146,13 +154,39 @@ Not done: rate limiting on login, email/password reset, and refresh tokens.
 
 ## Playing someone else
 
-"Play someone else" opens a room and hands you a link. Whoever you send it to
-picks a name and either takes the free seat or watches.
+`/play` asks what kind of game you want. Against the computer, no account is
+needed. Against a person there are two ways in:
 
-**Rooms are tied to identity.** A join without a valid ticket is closed, so
-every seat has an owner and every finished game has somewhere to go. That does
-not mean a sign-up wall: a visitor without an account is handed a *guest*
-identity automatically, and the room accepts it exactly like an account.
+- **Invite someone.** Opens a room and gives you two links: one to play, one to
+  watch. Unlimited watchers, one opponent.
+- **Quick play.** Puts you in a queue and pairs you with whoever is waiting,
+  colours drawn at random. The queue is polled, not socketed; sitting in one for
+  a few seconds does not earn its own connection.
+
+**Playing needs an account, watching does not.** A guest can open any link and
+watch, but `POST /rooms` and taking a seat both refuse them, because a result
+with nobody's name on it is not worth recording. Guests keep a signed identity
+in a cookie regardless, so their engine games are still their own.
+
+**A play link dies the moment both seats are full.** Whoever opens it then sees
+"Both seats are taken" with a button to watch instead, and the person who sent
+it is told over their own socket - the spec asked for both ends to know, and one
+side learning while the other waits is the bug that hides behind that.
+
+**The room belongs to the game, not to a player.** Whoever opened it may invite;
+if they leave, the right passes to whoever is still seated, so a game never
+strands its remaining player with no way to find an opponent.
+
+**Leaving mid-game loses it, but not instantly.** A seat with a move behind it is
+held for `GRACE_SECONDS` (60) while the board shows a countdown. Reconnecting -
+a refresh included - drops you straight back into your own seat, because a seat
+is matched by its owner's identity rather than by its connection. Let the clock
+run out and the game is recorded as `abandoned` with the win to whoever stayed.
+A seat abandoned *before* the first move is simply given back.
+
+**Everyone in the room can talk.** Players and watchers share one chat. The last
+50 messages ride along in every state snapshot so a late joiner sees the
+conversation; the whole transcript goes to Mongo.
 
 Either seat can also be filled by an engine, so a room works as a game between
 two people, a game against a machine that others can watch, or two engines
@@ -166,9 +200,9 @@ position locally, so there is one description of a game rather than two that
 can drift apart.
 
 Rooms live in server memory: they are conversations, not records. They vanish
-on restart, and an empty one is dropped after six hours. The room id is a
-`secrets.token_urlsafe(9)` and is the only thing protecting a room, so treat
-the link as the invitation it is.
+on restart, and an empty one is dropped after six hours. Room ids and invite
+tokens are `secrets.token_urlsafe`, and an invite token is the only thing
+protecting a room, so treat the link as the invitation it is.
 
 ### Who can actually reach the link
 
@@ -268,6 +302,23 @@ claiming you are still playing a neural net.
 
 `400` invalid FEN, unknown difficulty, or a finished game. `502` engine failure.
 
+Rooms, invitations and the queue:
+
+```
+POST   /rooms                   open a room               (account only)
+POST   /rooms/{id}/invites      { "kind": "play" | "watch" }  (host only)
+GET    /invites/{token}         { "status": "ok" | "taken" | "gone", ... }
+POST   /rooms/ticket            a short-lived ticket for the socket
+POST   /matchmaking             join the queue            (account only)
+GET    /matchmaking             waiting, or the room you were matched into
+DELETE /matchmaking             leave the queue
+WS     /rooms/{id}/ws           join, move, sit, stand, engine, resign,
+                                newGame, chat
+```
+
+A `GET /invites/{token}` that comes back `taken` also pushes an
+`inviteRejected` message to the host's socket, so neither end is left guessing.
+
 ## Tests
 
 ```bash
@@ -277,10 +328,14 @@ cd frontend && node --experimental-strip-types lib/chess-ui.test.mts
 ```
 
 The first covers mate detection, mate avoidance, material capture and terminal
-scoring. `test_rooms.py` drives two players and a spectator through real
-WebSockets and is mostly about refusals: moving out of turn, moving an
-opponent's pieces, a spectator trying to move or resign, taking an occupied
-seat, and moving after the game has ended. The third covers the plain-language move descriptions in the move
+scoring. `test_rooms.py` drives players and spectators through real
+WebSockets. Refusals: moving out of turn, moving an opponent's pieces, a
+spectator trying to move or resign, taking an occupied seat, moving after the
+game has ended, a guest trying to open a room or sit down, and a non-host trying
+to invite. Rules: a play invite dying when the seats fill (and the host being
+told), a refresh keeping both the seat and the game, walking away losing it once
+the grace period passes, the right to invite passing on when the host leaves,
+chat reaching everyone and reaching Mongo, and quick play pairing two people. The third covers the plain-language move descriptions in the move
 list: quiet moves, captures, both castles, en passant, promotion, and the
 check/checkmate distinction.
 

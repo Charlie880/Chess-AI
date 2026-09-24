@@ -8,7 +8,18 @@ export type SeatInfo = {
   name: string
   difficulty: Difficulty | null
   isYou: boolean
+  /** Their connection dropped; the seat is held until the clock runs out. */
+  away: boolean
+  secondsLeft: number | null
 } | null
+
+export type ChatMessage = {
+  id: string
+  name: string
+  ownerId: string
+  text: string
+  at: string
+}
 
 export type RoomState = {
   roomId: string
@@ -22,7 +33,15 @@ export type RoomState = {
   termination: string | null
   seats: { w: SeatInfo; b: SeatInfo }
   watchers: string[]
-  you: { id: string | null; color: "w" | "b" | null }
+  chat: ChatMessage[]
+  you: {
+    id: string | null
+    color: "w" | "b" | null
+    /** Only the host invites, and the right passes to whoever is left. */
+    canInvite: boolean
+    /** Guests may watch but not sit down. */
+    canPlay: boolean
+  }
 }
 
 export type Connection = "connecting" | "open" | "closed"
@@ -44,8 +63,10 @@ function socketUrl(roomId: string): string {
 
 export function useRoom(roomId: string, name: string, role: "play" | "watch") {
   const [state, setState] = useState<RoomState | null>(null)
+  const [chat, setChat] = useState<ChatMessage[]>([])
   const [connection, setConnection] = useState<Connection>("connecting")
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const socketRef = useRef<WebSocket | null>(null)
 
   useEffect(() => {
@@ -86,7 +107,13 @@ export function useRoom(roomId: string, name: string, role: "play" | "watch") {
         const message = JSON.parse(event.data)
         if (message.type === "state") {
           setState(message as RoomState)
+          // The snapshot carries the tail, which is what a late joiner needs.
+          setChat(message.chat ?? [])
           setError(null)
+        } else if (message.type === "chat") {
+          setChat((all) => [...all, message.message as ChatMessage])
+        } else if (message.type === "inviteRejected") {
+          setNotice(message.message)
         } else if (message.type === "error") {
           setError(message.message)
         }
@@ -112,5 +139,14 @@ export function useRoom(roomId: string, name: string, role: "play" | "watch") {
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message))
   }, [])
 
-  return { state, connection, error, send, clearError: () => setError(null) }
+  return {
+    state,
+    chat,
+    connection,
+    error,
+    notice,
+    send,
+    clearError: () => setError(null),
+    clearNotice: () => setNotice(null),
+  }
 }

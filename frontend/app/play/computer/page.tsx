@@ -283,6 +283,27 @@ export default function ChessGame() {
     if (history.length === 0) startGame(color)
   }
 
+  const undo = () => {
+    // Undo two moves: the player's move and the engine's reply
+    if (!inProgress || thinking || history.length < 2) return
+    game.current.undo() // Engine's move
+    game.current.undo() // Player's move
+    setCaptured((prev) => {
+      // Recompute captured pieces from remaining moves
+      const newCaptured: Captured = { w: [], b: [] }
+      game.current.history({ verbose: true }).forEach((move) => {
+        if (move.captured) {
+          const victim: PieceColor = move.color === "w" ? "b" : "w"
+          newCaptured[victim].push(move.captured)
+        }
+      })
+      return newCaptured
+    })
+    setLastMove(null)
+    bump()
+    void persist()
+  }
+
   const resign = () => {
     // Resigning mid-search would save the pre-move position while the engine's
     // reply still lands on the board, leaving the two out of step.
@@ -486,6 +507,15 @@ export default function ChessGame() {
               className={quietButton}
             >
               Flip board
+            </button>
+            <button
+              type="button"
+              onClick={undo}
+              disabled={!inProgress || thinking || history.length < 2}
+              className={quietButton}
+              title={history.length < 2 ? "Make a move to undo" : "Undo last two moves"}
+            >
+              Undo
             </button>
             <button
               type="button"

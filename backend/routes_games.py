@@ -174,3 +174,34 @@ async def list_games(
 @router.get("/{game_id}")
 async def get_game(game_id: str, identity: Identity = Depends(current_identity)):
     return _serialize(await _owned_game(game_id, identity))
+
+
+@router.get("/{game_id}/chat")
+async def get_game_chat(game_id: str, identity: Identity = Depends(current_identity)):
+    """Get all chat messages for a game. This is read-only access to verify the game exists
+    for the caller before returning its chat."""
+    game = await _owned_game(game_id, identity)
+
+    # Find messages from the room where this game was played
+    # A room game has a room_id field
+    room_id = game.get("room_id")
+    if not room_id:
+        return []
+
+    try:
+        room_oid = ObjectId(room_id)
+    except InvalidId:
+        return []
+
+    # Return all chat messages for this room
+    messages = []
+    cursor = db.messages().find({"room_id": room_oid}).sort("at", 1)
+    async for msg in cursor:
+        messages.append({
+            "id": str(msg["_id"]),
+            "ownerId": str(msg.get("owner_id")) if msg.get("owner_id") else None,
+            "name": msg.get("name", "Unknown"),
+            "text": msg["text"],
+            "at": msg["at"].isoformat(),
+        })
+    return messages

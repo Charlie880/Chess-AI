@@ -87,9 +87,10 @@ export default function GameHistory({ refreshKey }: { refreshKey: number }) {
 
         <div className="mt-4">
           {games.map((game) => (
-            <div
+            <a
               key={game.id}
-              className="grid grid-cols-[4.5rem_1fr_auto] items-baseline gap-4 border-t border-divider py-3 text-[13px] sm:grid-cols-[6rem_1fr_6rem_5rem]"
+              href={`/games/${game.id}`}
+              className="grid grid-cols-[4.5rem_1fr_auto] items-baseline gap-4 border-t border-divider py-3 px-2 text-[13px] sm:grid-cols-[6rem_1fr_6rem_5rem] transition-colors hover:bg-goldwash"
             >
               <span
                 className={cn(
@@ -110,7 +111,7 @@ export default function GameHistory({ refreshKey }: { refreshKey: number }) {
                 {Math.ceil(game.moves.length / 2)} moves
               </span>
               <span className="text-mute">{relative(game.startedAt)}</span>
-            </div>
+            </a>
           ))}
         </div>
       </div>

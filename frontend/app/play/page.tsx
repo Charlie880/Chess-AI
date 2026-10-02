@@ -185,6 +185,14 @@ export default function ChoosePage() {
             )}
           </section>
         </div>
+
+        <p className="mt-6 text-center text-[13px] text-mute">
+          Or{" "}
+          <Link href="/games" className="font-bold text-goldink hover:text-ink">
+            replay a played game
+          </Link>{" "}
+          with its chat. No account needed.
+        </p>
       </main>
     </div>
   )

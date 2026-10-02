@@ -87,6 +87,10 @@ class Room:
     host_id: str | None = None
     board: chess.Board = field(default_factory=chess.Board)
     moves: list[str] = field(default_factory=list)
+    # When each move was played, parallel to `moves`, so a replay can show chat
+    # at the moment it was said.
+    move_times: list[datetime] = field(default_factory=list)
+    game_started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     seats: dict[str, Seat | None] = field(default_factory=lambda: {"w": None, "b": None})
     members: dict[str, Member] = field(default_factory=dict)
     chat: list[dict] = field(default_factory=list)
@@ -450,6 +454,7 @@ def apply_move(room: Room, color: str, uci: str) -> chess.Move:
         raise MoveRejected("That move is not legal")
 
     room.moves.append(room.board.san(move))  # SAN must be read before the push
+    room.move_times.append(datetime.now(timezone.utc))
     room.board.push(move)
     room.status = "playing"
     _settle(room)
@@ -477,6 +482,7 @@ async def play_engine_moves(room: Room) -> bool:
             break
 
         room.moves.append(room.board.san(move))
+        room.move_times.append(datetime.now(timezone.utc))
         room.board.push(move)
         room.status = "playing"
         _settle(room)
@@ -501,6 +507,8 @@ def resign(room: Room, color: str) -> None:
 def reset(room: Room) -> None:
     room.board = chess.Board()
     room.moves = []
+    room.move_times = []
+    room.game_started_at = datetime.now(timezone.utc)
     room.saved = False
     room.result = None
     room.termination = None

@@ -78,6 +78,9 @@ def _serialize(game: dict) -> dict:
         "outcome": game.get("outcome"),
         "result": game.get("result"),
         "termination": game.get("termination"),
+        "whiteName": game.get("white_name"),
+        "blackName": game.get("black_name"),
+        "moveTimes": [t.isoformat() for t in game.get("move_times", [])],
         "startedAt": game["started_at"].isoformat(),
         "updatedAt": game["updated_at"].isoformat(),
         "finishedAt": game["finished_at"].isoformat() if game.get("finished_at") else None,
@@ -171,37 +174,57 @@ async def list_games(
     return [_serialize(game) async for game in cursor]
 
 
-@router.get("/{game_id}")
-async def get_game(game_id: str, identity: Identity = Depends(current_identity)):
-    return _serialize(await _owned_game(game_id, identity))
+@router.get("/public")
+async def list_public_games(
+    identity: Identity = Depends(current_identity),
+    limit: int = Query(default=30, ge=1, le=100),
+):
+    """Finished person-vs-person games, open to any visitor including guests.
+    A room game is stored once per player; taking the white copy lists each
+    game once."""
+    cursor = (
+        db.games()
+        .find({"mode": "room", "status": "finished", "player_color": "w"})
+        .sort("finished_at", -1)
+        .limit(limit)
+    )
+    return [_serialize(game) async for game in cursor]
 
 
-@router.get("/{game_id}/chat")
-async def get_game_chat(game_id: str, identity: Identity = Depends(current_identity)):
-    """Get all chat messages for a game. This is read-only access to verify the game exists
-    for the caller before returning its chat."""
-    game = await _owned_game(game_id, identity)
-
-    # Find messages from the room where this game was played
-    # A room game has a room_id field
+async def _chat_for(game: dict) -> list[dict]:
+    """Only what was said while this game was being played: a room can host
+    several games in a row, and each replay should show its own conversation."""
     room_id = game.get("room_id")
     if not room_id:
         return []
-
-    try:
-        room_oid = ObjectId(room_id)
-    except InvalidId:
-        return []
-
-    # Return all chat messages for this room
-    messages = []
-    cursor = db.messages().find({"room_id": room_oid}).sort("at", 1)
-    async for msg in cursor:
-        messages.append({
+    window = {"$gte": game["started_at"]}
+    if game.get("finished_at"):
+        window["$lte"] = game["finished_at"]
+    cursor = db.messages().find({"room_id": room_id, "at": window}).sort("at", 1)
+    return [
+        {
             "id": str(msg["_id"]),
-            "ownerId": str(msg.get("owner_id")) if msg.get("owner_id") else None,
+            "ownerId": msg.get("owner_id"),
             "name": msg.get("name", "Unknown"),
             "text": msg["text"],
             "at": msg["at"].isoformat(),
-        })
-    return messages
+        }
+        async for msg in cursor
+    ]
+
+
+@router.get("/{game_id}")
+async def get_game(game_id: str, identity: Identity = Depends(current_identity)):
+    """Your own game, or any finished room game: those are watchable by
+    everyone, the same as the live room was."""
+    try:
+        game = await _owned_game(game_id, identity)
+    except HTTPException:
+        try:
+            oid = ObjectId(game_id)
+        except InvalidId:
+            raise HTTPException(404, "Game not found")
+        game = await db.games().find_one({"_id": oid, "mode": "room", "status": "finished"})
+        if game is None:
+            raise HTTPException(404, "Game not found")
+    return {**_serialize(game), "chat": await _chat_for(game)}

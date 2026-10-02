@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 
 import AuthPanel, { type User } from "@/components/AuthPanel"
+import PublicGames from "@/components/PublicGames"
 import SiteMark from "@/components/SiteMark"
 import { cn } from "@/lib/utils"
 
@@ -112,17 +113,18 @@ export default function ChoosePage() {
         <AuthPanel user={user} onSignedOut={loadIdentity} />
       </header>
 
-      <main className="mx-auto w-full max-w-[760px] flex-1 px-4 py-12 sm:py-16">
+      <main className="mx-auto w-full max-w-[1080px] flex-1 px-4 py-12 sm:py-16">
         <h1 className="font-display text-[34px] font-medium leading-tight tracking-[-0.01em]">
-          What kind of game?
+          Play, or watch a game
         </h1>
         <p className="mt-2 text-[15px] text-slate">
-          Playing another person needs an account, so the result has somewhere to go.
+          Playing another person needs an account. Watching never does.
         </p>
 
         {error && <p className="mt-4 text-[13px] text-alarm">{error}</p>}
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-2">
+        <div className="mt-8 grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="grid gap-4">
           <section className={card}>
             <h2 className="text-[15px] font-bold">Play the computer</h2>
             <p className="mt-1.5 text-[13px] leading-[1.5] text-slate">
@@ -184,15 +186,23 @@ export default function ChoosePage() {
               </p>
             )}
           </section>
-        </div>
+          </div>
 
-        <p className="mt-6 text-center text-[13px] text-mute">
-          Or{" "}
-          <Link href="/games" className="font-bold text-goldink hover:text-ink">
-            replay a played game
-          </Link>{" "}
-          with its chat. No account needed.
-        </p>
+          <section aria-labelledby="watch-heading">
+            <div className="mb-3 flex items-baseline justify-between gap-4">
+              <h2 id="watch-heading" className="text-[15px] font-bold">
+                Watch a game
+              </h2>
+              <Link href="/games" className="text-[13px] font-bold text-goldink hover:text-ink">
+                See all
+              </Link>
+            </div>
+            <p className="mb-3 text-[13px] leading-[1.5] text-slate">
+              Replay any finished game between two people, with the chat as it happened. No account needed.
+            </p>
+            <PublicGames limit={8} />
+          </section>
+        </div>
       </main>
     </div>
   )

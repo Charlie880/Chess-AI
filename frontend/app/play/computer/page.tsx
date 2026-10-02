@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { Chess, type Move } from "chess.js"
 
 import AuthPanel, { type User } from "@/components/AuthPanel"
+import BackLink from "@/components/BackLink"
 import ChessBoard from "@/components/ChessBoard"
 import EngineSelector from "@/components/EngineSelector"
 import GameHistory from "@/components/GameHistory"
@@ -375,7 +376,10 @@ export default function ChessGame() {
         className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-line bg-white lg:grid lg:grid-cols-[1fr_auto_1fr]"
         style={{ padding: "14px clamp(16px, 4vw, 48px)" }}
       >
-        <SiteMark />
+        <div className="flex items-center gap-4">
+          <SiteMark />
+          <BackLink href="/play">Menu</BackLink>
+        </div>
 
         <div className="order-last flex w-full justify-center lg:order-none lg:w-auto">
           <EngineSelector

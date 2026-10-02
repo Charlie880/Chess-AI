@@ -10,6 +10,7 @@ import RoomChat from "@/components/RoomChat"
 import RoomInvites from "@/components/RoomInvites"
 import RoomSeats from "@/components/RoomSeats"
 import Scoresheet from "@/components/Scoresheet"
+import BackLink from "@/components/BackLink"
 import SiteMark from "@/components/SiteMark"
 import { materialBalance, type PieceColor, type PlayedMove } from "@/lib/chess-ui"
 import type { Difficulty } from "@/lib/engines"
@@ -48,7 +49,10 @@ export default function RoomBoard({ roomId, name, role }: RoomBoardProps) {
       className="flex items-center justify-between gap-4 border-b border-line bg-white"
       style={{ padding: "14px clamp(16px, 4vw, 48px)" }}
     >
-      <SiteMark />
+      <div className="flex items-center gap-4">
+        <SiteMark />
+        <BackLink href="/play">Leave room</BackLink>
+      </div>
       <span className="figures text-[13px] text-mute">Room {roomId}</span>
     </header>
   )

@@ -1,9 +1,9 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import Link from "next/link"
 import { Chess } from "chess.js"
 
+import BackLink from "@/components/BackLink"
 import ChessBoard from "@/components/ChessBoard"
 import PlayerRail from "@/components/PlayerRail"
 import Scoresheet from "@/components/Scoresheet"
@@ -46,7 +46,13 @@ export default function GameReplay({ game }: { game: ReplayGame }) {
 
   const position = useMemo(() => {
     const chess = new Chess()
-    for (let i = 0; i < step; i++) chess.move(game.moves[i])
+    for (let i = 0; i < step; i++) {
+      try {
+        chess.move(game.moves[i])
+      } catch {
+        break // a corrupt stored move ends the replay there rather than crashing the page
+      }
+    }
     return chess
   }, [game.moves, step])
 
@@ -111,12 +117,7 @@ export default function GameReplay({ game }: { game: ReplayGame }) {
       >
         <SiteMark />
         <span className="text-[11px] font-bold tracking-[0.16em] text-mute">REPLAY</span>
-        <Link
-          href="/games"
-          className="flex h-10 items-center rounded-lg border border-field bg-white px-4 text-xs font-semibold text-ink transition-colors hover:border-ink"
-        >
-          All games
-        </Link>
+        <BackLink href="/games">All games</BackLink>
       </header>
 
       <main
@@ -173,6 +174,9 @@ export default function GameReplay({ game }: { game: ReplayGame }) {
             >
               Flip board
             </button>
+            {total === 0 && (
+              <p className="text-[13px] text-mute">No moves were played in this game.</p>
+            )}
             <p className="text-xs text-mute">Left and right arrow keys step through the game.</p>
           </div>
         </aside>

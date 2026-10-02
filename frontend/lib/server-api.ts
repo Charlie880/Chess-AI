@@ -105,7 +105,12 @@ export async function ensureIdentity(): Promise<{
   return { token, freshGuest: token }
 }
 
-/** Every /api/games and /api/rooms route needs the same identity preamble. */
+/** Every /api/games and /api/rooms route needs the same identity preamble.
+ *
+ * A credential the API rejects (expired, or signed by a different deployment)
+ * would otherwise fail every request forever, because the cookie keeps being
+ * sent. So a 401 drops the bad credential and tries again: first as the guest
+ * already on this browser, then as a fresh guest. */
 export async function withIdentity(
   handler: (token: string) => Promise<NextResponse>,
 ): Promise<NextResponse> {
@@ -113,6 +118,25 @@ export async function withIdentity(
   if (!token) {
     return NextResponse.json({ error: "Could not establish an identity" }, { status: 503 })
   }
-  const response = await handler(token)
-  return freshGuest ? setGuestCookie(response, freshGuest) : response
+  let response = await handler(token)
+  let guestToSet = freshGuest
+  let dropSession = false
+
+  if (response.status === 401) {
+    dropSession = sessionToken() !== null
+    let next = dropSession ? guestToken() : null
+    if (next) {
+      response = await handler(next)
+    }
+    if (!next || response.status === 401) {
+      const minted = await callBackend("/auth/guest", { method: "POST" })
+      if (!minted.ok) return response
+      next = (minted.data as { token: string }).token
+      guestToSet = next
+      response = await handler(next)
+    }
+  }
+
+  if (dropSession) clearTokenCookie(response)
+  return guestToSet ? setGuestCookie(response, guestToSet) : response
 }
